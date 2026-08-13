@@ -144,6 +144,7 @@ Official bindings wrap the C API for other languages:
 | TypeScript / JavaScript | [bindings/typescript](bindings/typescript) |
 | Rust | [bindings/rust/transcribe-cpp](bindings/rust/transcribe-cpp) |
 | Swift / ObjC | [bindings/swift](bindings/swift) |
+| Go | [bindings/go](bindings/go) |
 
 See [`docs/bindings.md`](docs/bindings.md) for how the bindings are generated
 and kept in sync with the header.
@@ -208,7 +209,7 @@ src/arch/parakeet/         Parakeet family implementation
 src/arch/cohere/           Cohere Transcribe family implementation
 examples/cli/              CLI binary source
 tools/transcribe-quantize/ Quantization tool source
-bindings/                  Python, TypeScript, Rust, and Swift bindings
+bindings/                  Python, TypeScript, Rust, Swift, and Go bindings
 docs/                      Porting and validation guidance
 scripts/                   Python converter + test tooling
 ggml/                      Vendored ggml (see ggml/UPSTREAM for pinned SHA)

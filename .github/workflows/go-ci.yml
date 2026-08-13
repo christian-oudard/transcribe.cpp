@@ -1,0 +1,185 @@
+name: go-ci
+
+# Every-PR gates for the Go binding (module
+# github.com/handy-computer/transcribe.cpp/bindings/go). Thin per-binding
+# workflow on the shared rails: the binding-agnostic C contracts are certified
+# in native-ci.yml; this file adds only what the cgo layer introduces.
+#
+# The two non-obvious choices here:
+#
+#   - go-gates has no typecheck tier. cgo compiles the C headers for `go vet`
+#     and `go build` alike, so everything but gofmt and the abihash pin needs
+#     the native library. Like Swift, the drift gate is that pin rather than a
+#     regenerated FFI layer: compiling the header catches only ABI changes
+#     that stop compiling, and a renumbered enum is not one of them.
+#   - the linux leg re-runs the pointer-passing tests under cgocheck2. cgo
+#     pointer-rule violations fail rarely and unpredictably, so an ordinary
+#     green run is not evidence that there are none.
+#
+# Two test tiers (requirements §4): the no-model tests always run, including
+# on forks; the model-gated tests un-skip only when fetch-canary has the GGUFs.
+#
+# Scope: linux + macos. Windows is a follow-up — cgo needs a GCC toolchain
+# there, a different link posture from the MSVC build every other Windows lane
+# in this repo uses, and it should not gate the binding.
+
+on:
+  push:
+    branches: [main]
+    paths: &paths
+      - "bindings/go/**"
+      - "src/**"
+      - "include/**"
+      - "ggml/**"
+      - "cmake/**"
+      - "CMakeLists.txt"
+      - "CMakePresets.json"
+      - "scripts/ci/abihash_check.py"
+      - "bindings/python/_generate/check_version_sync.py"
+      - ".github/workflows/go-ci.yml"
+      - ".github/actions/**"
+  pull_request:
+    paths: *paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go-gates:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          # There are no dependencies to cache, but this also covers the build
+          # cache, and every step here recompiles the cgo objects without it.
+          cache-dependency-path: bindings/go/go.mod
+      - uses: astral-sh/setup-uv@v8.2.0  # for the gate scripts
+      - name: ABI-hash drift gate (pinned abihash vs the header)
+        run: uv run --no-project scripts/ci/abihash_check.py go
+      - name: Version sync (header <-> CompiledVersion)
+        run: uv run --no-project python bindings/python/_generate/check_version_sync.py
+      - name: gofmt
+        working-directory: bindings/go
+        # -l lists what is unformatted; the file list is the error message.
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "not gofmt'd:"; echo "$unformatted"; exit 1
+          fi
+
+  go-build:
+    name: go-build (${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: linux-x64
+            runner: blacksmith-2vcpu-ubuntu-2404
+            cmake_flags: ""
+            cgocheck2: true
+          # macOS arm64 on owned hardware, Metal on and the library embedded,
+          # matching native-ci and the shipped macOS wheel posture.
+          - label: macos-arm64
+            runner: [self-hosted, macOS, ARM64]
+            cmake_flags: "-DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON"
+            cgocheck2: false
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    env:
+      # Gates the model-test tier: present on this repo's branches, absent on
+      # forks (where fetch-canary skips and the model tests skip cleanly).
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          # There are no dependencies to cache, but this also covers the build
+          # cache, and every step here recompiles the cgo objects without it.
+          cache-dependency-path: bindings/go/go.mod
+      - name: Install build deps (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build ccache
+      - name: Install build deps (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install ninja
+          command -v ccache >/dev/null || brew install ccache
+      - name: Enable ccache launcher
+        run: |
+          echo "CMAKE_C_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
+          echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
+      - name: CPU ISA signature (ccache key)
+        # ggml builds with -march=native here; ccache hashes the literal flag,
+        # not the resolved ISA, so key the cache by the CPU's own features.
+        if: runner.os == 'Linux'
+        run: echo "CPU_SIG=$(grep -m1 '^flags' /proc/cpuinfo | sha256sum | cut -c1-8)" >> "$GITHUB_ENV"
+      - name: ccache (native source build)
+        if: runner.os == 'Linux'
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ccache
+          key: ccache-go-build-${{ matrix.label }}-${{ env.CPU_SIG }}-${{ github.sha }}
+          restore-keys: ccache-go-build-${{ matrix.label }}-${{ env.CPU_SIG }}-
+      - name: Build + install a shared libtranscribe
+        # cgo has no build.rs equivalent, so it takes the prefix through the
+        # environment — the same recipe bindings/go/README.md gives users. The
+        # install's own transcribe-link.json says where it put things, which
+        # is the repo's answer for non-CMake consumers and avoids re-deriving
+        # the lib vs lib64 split here.
+        shell: bash
+        run: |
+          cmake -B build-shared -G Ninja -DTRANSCRIBE_BUILD_SHARED=ON \
+            -DTRANSCRIBE_BUILD_TESTS=OFF -DTRANSCRIBE_BUILD_EXAMPLES=OFF \
+            -DTRANSCRIBE_BUILD_TOOLS=OFF ${{ matrix.cmake_flags }}
+          cmake --build build-shared
+          cmake --install build-shared --prefix "$GITHUB_WORKSPACE/prefix"
+          prefix="$GITHUB_WORKSPACE/prefix"
+          manifest=$(find "$prefix" -name transcribe-link.json | head -1)
+          # include_dir and lib_dir are relative to the prefix.
+          read -r incdir libdir <<<"$(python3 -c \
+            'import json,sys; m=json.load(open(sys.argv[1])); print(m["include_dir"], m["lib_dir"])' \
+            "$manifest")"
+          echo "CGO_CFLAGS=-I$prefix/$incdir" >> "$GITHUB_ENV"
+          echo "CGO_LDFLAGS=-L$prefix/$libdir" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$prefix/$libdir" >> "$GITHUB_ENV"
+          echo "DYLD_LIBRARY_PATH=$prefix/$libdir" >> "$GITHUB_ENV"
+      - name: Vet
+        working-directory: bindings/go
+        run: go vet ./...
+      # The canary GGUFs upgrade the suite from no-model gates to real
+      # transcription/streaming/cancel coverage. jfk.wav ships in-repo, so only
+      # the model paths need exporting (fetch-canary handles that).
+      - uses: ./.github/actions/fetch-canary
+        with:
+          hf-token: ${{ secrets.HF_TOKEN }}
+      - name: Conformance (no-model tier always; model tier when canary present)
+        working-directory: bindings/go
+        run: go test ./...
+      # cgo's pointer rules are checked here rather than trusted: a violation
+      # corrupts memory rarely enough that the plain run above cannot see it.
+      # Scoped to the tests that hand Go pointers to C — the run, stream and
+      # tokenize entry points are the only ones that do — since GOEXPERIMENT
+      # changes the build cache key and re-running the whole model tier just
+      # to recheck device discovery buys nothing.
+      - name: Conformance under cgocheck2 (cgo pointer rules)
+        if: matrix.cgocheck2
+        working-directory: bindings/go
+        env:
+          GOEXPERIMENT: cgocheck2
+        run: go test -count=1 -run 'TestRun|TestStream|TestTokenize|TestWhisper|TestMoonshine|TestParakeet|TestExtension' ./...
+      - name: Examples (CI-executed; §6 Rosetta set)
+        working-directory: bindings/go
+        shell: bash
+        run: |
+          for ex in transcribe-file streaming batch backend-select error-handling; do
+            echo "=== example: $ex ==="
+            go run "./examples/$ex"
+          done
+      - name: ccache stats
+        if: runner.os == 'Linux'
+        run: ccache -s | head -8

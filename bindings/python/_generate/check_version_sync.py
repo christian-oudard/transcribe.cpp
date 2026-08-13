@@ -42,6 +42,7 @@ RUST_SAFE_CARGO = REPO / "bindings" / "rust" / "transcribe-cpp" / "Cargo.toml"
 CARGO_LOCK = REPO / "Cargo.lock"
 PACKAGE_LOCK = REPO / "bindings" / "typescript" / "package-lock.json"
 SWIFT_SOURCE = REPO / "bindings" / "swift" / "Sources" / "TranscribeCpp" / "TranscribeCpp.swift"
+GO_SOURCE = REPO / "bindings" / "go" / "transcribe.go"
 
 # Binding package manifests (requirements doc §2: every manifest is derived
 # from or gated against the header). Gated by the `active` flag: a 0.0.0
@@ -177,6 +178,16 @@ def swift_compiled_version(text: str) -> str | None:
     return m.group(1) if m else None
 
 
+def go_compiled_version(text: str) -> str | None:
+    # The hand-maintained Go literal `CompiledVersion = "X.Y.Z"` that the cgo
+    # load gate (ensureCompatible) compares against the linked library. Go has
+    # no manifest carrying a version -- go.mod records the module path and the
+    # language level, not a release -- so the constant is the only source.
+    # (The Go ABI pin is checked separately by abihash_check.py.)
+    m = re.search(r'CompiledVersion\s*=\s*"([^"]+)"', text)
+    return m.group(1) if m else None
+
+
 def main() -> int:
     pyproject_text = PYPROJECT.read_text()
     sources = {
@@ -203,6 +214,9 @@ def main() -> int:
         sources["package-lock.json"] = None
     sources["TranscribeCpp.swift (compiledVersion)"] = (
         swift_compiled_version(SWIFT_SOURCE.read_text()) if SWIFT_SOURCE.exists() else None
+    )
+    sources["transcribe.go (CompiledVersion)"] = (
+        go_compiled_version(GO_SOURCE.read_text()) if GO_SOURCE.exists() else None
     )
 
     # Binding manifests: active ones join the equality set; inactive ones

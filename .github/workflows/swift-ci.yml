@@ -6,7 +6,7 @@ name: swift-ci
 #
 #   - swift-gates:  the public-ABI drift gate — the pinned hash in
 #                   ABIHash.swift compared against include/transcribe.abihash
-#                   (scripts/ci/swift_abihash_check.py). No native build; fast,
+#                   (scripts/ci/abihash_check.py). No native build; fast,
 #                   runs everywhere. (Swift has no generated FFI layer: the
 #                   Clang importer reads the headers directly, so the gate is a
 #                   pinned constant, not a regen check. Version-sync is the git
@@ -38,7 +38,7 @@ on:
       - "CMakeLists.txt"
       - "CMakePresets.json"
       - "scripts/ci/build_xcframework.sh"
-      - "scripts/ci/swift_abihash_check.py"
+      - "scripts/ci/abihash_check.py"
       - ".github/workflows/swift-ci.yml"
   pull_request:
     paths: *paths
@@ -55,7 +55,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v8.2.0
       - name: Public-ABI drift gate (pinned hash vs include/transcribe.abihash)
-        run: uv run --no-project scripts/ci/swift_abihash_check.py
+        run: uv run --no-project scripts/ci/abihash_check.py swift
 
   swift-macos:
     runs-on: [self-hosted, macOS, ARM64]
