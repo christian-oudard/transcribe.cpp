@@ -37,6 +37,41 @@ Lowering `--n-ctx` lowers the limit, and `transcribe_session_get_limits()`
 reports the exact per-session value. See the
 [input-length contract](../input-limits.md).
 
+## Free-text instruction
+
+Voxtral is an audio-LLM, and its instruct prompt mode takes arbitrary text:
+
+    [BOS][INST][BEGIN_AUDIO][AUDIO]*N BPE(instruction)[/INST]
+
+`TRANSCRIBE_TASK_TRANSLATE` uses that slot for a synthesized "Translate this
+to X."; `transcribe_voxtral_run_ext` in
+[`include/transcribe/voxtral.h`](../../include/transcribe/voxtral.h) is how a
+caller puts its own text there instead. That is the mechanism behind the
+family's `TRANSCRIBE_FEATURE_INITIAL_PROMPT`.
+
+Biasing a transcript toward expected vocabulary is what it was exposed for:
+
+```c
+struct transcribe_voxtral_run_ext ext;
+transcribe_voxtral_run_ext_init(&ext);
+ext.instruction = "Transcribe. Expected terms: NixOS, nixpkgs, direnv.";
+
+struct transcribe_run_params rp;
+transcribe_run_params_init(&rp);
+rp.family = &ext.ext;
+```
+
+This is not Whisper's initial prompt. Whisper conditions its decoder on
+prior-context tokens, so the bias is mechanical; this is an instruction to a
+language model, which may follow it loosely or ignore it. It also shares the
+decoder context window with the audio tokens and the transcript, and this
+family caps that hard, so keep it short.
+
+Combining an instruction with `TRANSCRIBE_TASK_TRANSLATE` is
+`TRANSCRIBE_ERR_INVALID_ARG`: both want the one instruction slot, and
+dropping either silently would be worse than refusing. The rejection happens
+before the previous result is cleared, so a mistake here costs no transcript.
+
 ## Notes
 
 - The 24B is the larger sibling — same architecture, scaled decoder. It is a

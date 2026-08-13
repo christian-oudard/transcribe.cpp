@@ -78,6 +78,7 @@ __all__ = [
     "StreamUpdate",
     "StreamText",
     "FamilyExtension",
+    "VoxtralRunOptions",
     "WhisperRunOptions",
     "MoonshineStreamingOptions",
     "ParakeetStreamOptions",
@@ -724,6 +725,33 @@ class WhisperRunOptions(FamilyExtension):
             ext.seed = self.seed
         if self.max_initial_timestamp is not None:
             ext.max_initial_timestamp = self.max_initial_timestamp
+
+class VoxtralRunOptions(FamilyExtension):
+    """Voxtral run-extension options (run slot): a free-text instruction.
+
+    Voxtral is an audio-LLM, so this is an instruction to a language model
+    rather than Whisper's decoder conditioning: it lands after the audio tokens
+    in the instruct template, and the model may follow it loosely or ignore it.
+    Biasing a transcript toward known vocabulary is the use it was exposed for,
+    e.g. "Transcribe. Expected terms: NixOS, nixpkgs, direnv."
+
+    It shares the decoder context window with the audio and the transcript,
+    which this family caps hard, so keep it short. Combining it with
+    Task.TRANSLATE raises INVALID_ARG: both want the one instruction slot.
+    """
+
+    _slot = "run"
+    _kind = _generated.TRANSCRIBE_EXT_KIND_VOXTRAL_RUN
+    _struct = _generated.transcribe_voxtral_run_ext
+    _init = "transcribe_voxtral_run_ext_init"
+
+    def __init__(self, *, instruction: str | None = None):
+        # None or "" leaves the family in transcription mode.
+        self.instruction = instruction
+
+    def _apply(self, ext) -> None:
+        if self.instruction:
+            ext.instruction = self.instruction.encode("utf-8")
 
 
 class MoonshineStreamingOptions(FamilyExtension):

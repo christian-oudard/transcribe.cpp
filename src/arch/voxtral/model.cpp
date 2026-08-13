@@ -83,6 +83,24 @@ namespace {
 
 constexpr const char k_default_variant[] = "voxtral-mini-3b-2507";
 
+// The caller's free-text instruction, or "" for none. Selecting instruct mode
+// on the strength of it is what gives the family its INITIAL_PROMPT feature:
+// the text lands where the synthesized translate instruction would.
+static std::string family_instruction(const transcribe_run_params * params) {
+    if (params == nullptr || params->family == nullptr) {
+        return {};
+    }
+    if (transcribe_ext_check(params->family, TRANSCRIBE_EXT_KIND_VOXTRAL_RUN,
+                             sizeof(struct transcribe_voxtral_run_ext)) != TRANSCRIBE_OK) {
+        return {};  // run_validate already rejected it; belt and braces
+    }
+    const auto * ext = reinterpret_cast<const transcribe_voxtral_run_ext *>(params->family);
+    if (ext->instruction == nullptr) {
+        return {};
+    }
+    return std::string(ext->instruction);
+}
+
 // Floor on the decoder text budget for short clips (also Whisper's per-chunk
 // cap). Long audio scales the budget up with the audio length — see run().
 constexpr int k_decode_budget_min = 448;
@@ -611,6 +629,8 @@ transcribe_status run(transcribe_session *          session,
     if (translate) {
         const char * tgt = (params != nullptr) ? params->target_language : nullptr;
         instruction      = std::string("Translate this to ") + lang_name_for(tgt) + ".";
+    } else {
+        instruction = family_instruction(params);
     }
 
     if (!cm->mel.has_value()) {
@@ -748,9 +768,11 @@ transcribe_status run(transcribe_session *          session,
     cc->t_encode_us = ggml_time_us() - t_enc_start;
 
     // ----- Prompt construction -----
+    // Instruct mode is chosen by having an instruction at all, whether that
+    // is the synthesized translate one or a caller's free text.
     std::vector<int32_t> prompt_ids;
     int                  prefix_len = 0, suffix_len = 0;
-    if (translate) {
+    if (!instruction.empty()) {
         if (const transcribe_status st =
                 build_instruct_prompt(*cm, instruction, n_audio_total, prompt_ids, prefix_len, suffix_len);
             st != TRANSCRIBE_OK) {
@@ -1132,6 +1154,8 @@ transcribe_status run_batch(transcribe_session *          session,
     if (translate) {
         const char * tgt = (params != nullptr) ? params->target_language : nullptr;
         instruction      = std::string("Translate this to ") + lang_name_for(tgt) + ".";
+    } else {
+        instruction = family_instruction(params);
     }
     const char * lang = (params != nullptr) ? params->language : nullptr;
 
@@ -1301,7 +1325,9 @@ transcribe_status run_batch(transcribe_session *          session,
         }
         const int               n_audio = n_chunks[b] * audio_per_chunk;
         int                     pfx = 0, sfx = 0;
-        const transcribe_status st = translate ?
+        // As in run(): an instruction, from either source, selects instruct
+        // mode.
+        const transcribe_status st = !instruction.empty() ?
                                          build_instruct_prompt(*cm, instruction, n_audio, prompt_ids[b], pfx, sfx) :
                                          build_transcription_prompt(*cm, lang, n_audio, prompt_ids[b], pfx, sfx);
         if (st != TRANSCRIBE_OK) {
@@ -1585,6 +1611,41 @@ transcribe_status run_batch(transcribe_session *          session,
 
 }  // namespace
 
+// The run slot takes the free-text instruction ext; nothing rides the stream
+// slot for this family (voxtral_realtime is a separate arch).
+static bool accepts_ext_kind(const transcribe_model * model, transcribe_ext_slot slot, uint32_t kind) {
+    if (model == nullptr) {
+        return false;
+    }
+    if (slot != TRANSCRIBE_EXT_SLOT_RUN) {
+        return false;
+    }
+    return kind == TRANSCRIBE_EXT_KIND_VOXTRAL_RUN;
+}
+
+// Pre-clear validation for the _RUN slot (see Arch::run_validate): reject a
+// malformed ext, or an instruction that collides with TASK_TRANSLATE, before
+// the previous result snapshot is destroyed.
+static transcribe_status run_validate(const transcribe_session * /*ctx*/, const transcribe_run_params * params) {
+    if (params == nullptr || params->family == nullptr) {
+        return TRANSCRIBE_OK;  // NULL ext -> transcription mode
+    }
+    if (const transcribe_status st = transcribe_ext_check(params->family, TRANSCRIBE_EXT_KIND_VOXTRAL_RUN,
+                                                          sizeof(struct transcribe_voxtral_run_ext));
+        st != TRANSCRIBE_OK) {
+        return st;
+    }
+    const auto * ext = reinterpret_cast<const transcribe_voxtral_run_ext *>(params->family);
+    if (ext->instruction != nullptr && ext->instruction[0] != '\0' && params->task == TRANSCRIBE_TASK_TRANSLATE) {
+        // Both want the one instruction slot in the template. Dropping either
+        // silently would be worse than saying so.
+        log_msg(TRANSCRIBE_LOG_LEVEL_ERROR,
+                "voxtral run: a free-text instruction and TASK_TRANSLATE cannot be combined");
+        return TRANSCRIBE_ERR_INVALID_ARG;
+    }
+    return TRANSCRIBE_OK;
+}
+
 extern const Arch arch = {
     /* .name             = */ "voxtral",
     /* .load             = */ load,
@@ -1596,7 +1657,23 @@ extern const Arch arch = {
     /* .stream_feed      = */ nullptr,
     /* .stream_finalize  = */ nullptr,
     /* .stream_reset     = */ nullptr,
-    /* .accepts_ext_kind = */ nullptr,
+    /* .accepts_ext_kind = */ accepts_ext_kind,
+    /* .run_validate     = */ run_validate,
 };
 
 }  // namespace transcribe::voxtral
+
+// ---------------------------------------------------------------------------
+// Public run-extension initializer. Fills the transcribe_ext header (size +
+// kind) and the transcription-mode default of no instruction.
+// ---------------------------------------------------------------------------
+
+extern "C" void transcribe_voxtral_run_ext_init(struct transcribe_voxtral_run_ext * p) {
+    if (p == nullptr) {
+        return;
+    }
+    std::memset(p, 0, sizeof(*p));
+    p->ext.size    = sizeof(*p);
+    p->ext.kind    = TRANSCRIBE_EXT_KIND_VOXTRAL_RUN;
+    p->instruction = nullptr;
+}

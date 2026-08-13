@@ -17,6 +17,7 @@
 #include "transcribe-model.h"
 #include "transcribe-session.h"
 #include "transcribe-tokenizer.h"
+#include "transcribe/voxtral.h"  // public run ext + kind
 #include "weights.h"
 
 #include <cstdint>

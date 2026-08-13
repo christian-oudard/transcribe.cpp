@@ -11,7 +11,7 @@
 // Stable digest of the ABI surface (structs, enums, macros, layout,
 // prototypes), computed by the Python oracle and pinned here so a header
 // ABI change turns this binding's drift check red for conscious review.
-export const PUBLIC_HEADER_HASH = "7896d8d4c2a46147";
+export const PUBLIC_HEADER_HASH = "adc05d5218675ecb";
 
 // === enum constants ===
 export const TRANSCRIBE_OK = 0;
@@ -113,6 +113,7 @@ export const TRANSCRIBE_EXT_KIND_PARAKEET_BUFFERED_STREAM = 1396853584;
 export const TRANSCRIBE_EXT_KIND_PARAKEET_STREAM = 1414744912;
 export const TRANSCRIBE_EXT_KIND_SORTFORMER_STREAM = 1414743635;
 export const TRANSCRIBE_EXT_KIND_VOXTRAL_REALTIME_STREAM = 1414746710;
+export const TRANSCRIBE_EXT_KIND_VOXTRAL_RUN = 1314019414;
 export const TRANSCRIBE_EXT_KIND_WHISPER_RUN = 1314015319;
 
 export interface StructLayout { size: number; align: number; offsets: Record<string, number>; }
@@ -136,6 +137,7 @@ export const STRUCT_LAYOUT: Record<string, StructLayout> = {
   'transcribe_parakeet_stream_ext': { size: 24, align: 8, offsets: {'ext': 0, 'att_context_right': 16} },
   'transcribe_parakeet_buffered_stream_ext': { size: 32, align: 8, offsets: {'ext': 0, 'left_ms': 16, 'chunk_ms': 20, 'right_ms': 24} },
   'transcribe_sortformer_stream_ext': { size: 24, align: 8, offsets: {'ext': 0, 'preset': 16} },
+  'transcribe_voxtral_run_ext': { size: 24, align: 8, offsets: {'ext': 0, 'instruction': 16} },
   'transcribe_voxtral_realtime_stream_ext': { size: 24, align: 8, offsets: {'ext': 0, 'num_delay_tokens': 16, 'min_decode_interval_ms': 20} },
   'transcribe_whisper_run_ext': { size: 80, align: 8, offsets: {'ext': 0, 'initial_prompt': 16, 'prompt_tokens': 24, 'n_prompt_tokens': 32, 'prompt_condition': 40, 'condition_on_prev_tokens': 44, 'max_prev_context_tokens': 48, 'temperature': 52, 'temperature_inc': 56, 'compression_ratio_thold': 60, 'logprob_thold': 64, 'no_speech_thold': 68, 'seed': 72, 'max_initial_timestamp': 76} },
   'transcribe_whisper_chunk_trace': { size: 48, align: 8, offsets: {'struct_size': 0, 't0_ms': 8, 't1_ms': 16, 'temperature_used': 24, 'compression_ratio': 28, 'avg_logprob': 32, 'no_speech_prob': 36, 'no_speech_triggered': 40, 'n_fallbacks': 44} },
@@ -181,6 +183,7 @@ export function defineTypes(koffi: any): Record<string, any> {
   T['transcribe_parakeet_stream_ext'] = koffi.struct({ ext: T['transcribe_ext'], att_context_right: 'int32_t' });
   T['transcribe_parakeet_buffered_stream_ext'] = koffi.struct({ ext: T['transcribe_ext'], left_ms: 'int32_t', chunk_ms: 'int32_t', right_ms: 'int32_t' });
   T['transcribe_sortformer_stream_ext'] = koffi.struct({ ext: T['transcribe_ext'], preset: 'int' });
+  T['transcribe_voxtral_run_ext'] = koffi.struct({ ext: T['transcribe_ext'], instruction: 'char *' });
   T['transcribe_voxtral_realtime_stream_ext'] = koffi.struct({ ext: T['transcribe_ext'], num_delay_tokens: 'int32_t', min_decode_interval_ms: 'int32_t' });
   T['transcribe_whisper_run_ext'] = koffi.struct({ ext: T['transcribe_ext'], initial_prompt: 'char *', prompt_tokens: 'void *', n_prompt_tokens: 'size_t', prompt_condition: 'int', condition_on_prev_tokens: 'bool', max_prev_context_tokens: 'int32_t', temperature: 'float', temperature_inc: 'float', compression_ratio_thold: 'float', logprob_thold: 'float', no_speech_thold: 'float', seed: 'uint32_t', max_initial_timestamp: 'float' });
   T['transcribe_whisper_chunk_trace'] = koffi.struct({ struct_size: 'uint64_t', t0_ms: 'int64_t', t1_ms: 'int64_t', temperature_used: 'float', compression_ratio: 'float', avg_logprob: 'float', no_speech_prob: 'float', no_speech_triggered: 'bool', n_fallbacks: 'int32_t' });
@@ -282,6 +285,7 @@ export const FUNCTION_SIGNATURES: Record<string, FnSig> = {
   'transcribe_version': { ret: 'const char *', args: [] },
   'transcribe_version_commit': { ret: 'const char *', args: [] },
   'transcribe_voxtral_realtime_stream_ext_init': { ret: 'void', args: ['struct transcribe_voxtral_realtime_stream_ext *'] },
+  'transcribe_voxtral_run_ext_init': { ret: 'void', args: ['struct transcribe_voxtral_run_ext *'] },
   'transcribe_was_aborted': { ret: '_Bool', args: ['const struct transcribe_session *'] },
   'transcribe_was_truncated': { ret: '_Bool', args: ['const struct transcribe_session *'] },
   'transcribe_whisper_chunk_trace_init': { ret: 'void', args: ['struct transcribe_whisper_chunk_trace *'] },

@@ -238,6 +238,21 @@ export interface VoxtralRealtimeStreamOptions {
   numDelayTokens?: number;
   minDecodeIntervalMs?: number;
 }
+/** Voxtral free-text instruction (run slot).
+ *
+ *  Voxtral is an audio-LLM, so this is an instruction to a language model
+ *  rather than Whisper's decoder conditioning: it lands after the audio tokens
+ *  in the instruct template, and the model may follow it loosely or ignore it.
+ *  Biasing a transcript toward known vocabulary is the use it was exposed for,
+ *  e.g. "Transcribe. Expected terms: NixOS, nixpkgs, direnv."
+ *
+ *  It shares the decoder context window with the audio and the transcript,
+ *  which this family caps hard, so keep it short. Combining it with the
+ *  translate task is rejected: both want the one instruction slot. */
+export interface VoxtralRunOptions {
+  /** Absent or empty leaves the family in transcription mode. */
+  instruction?: string;
+}
 /** Sortformer streaming operating point (latency / accuracy trade-off).
  *  "default" keeps the GGUF-shipped checkpoint configuration;
  *  "very_high_latency" (~30 s lookahead) is the offline-file operating
@@ -259,4 +274,5 @@ export type FamilyExtension =
   | ({ kind: "parakeet" } & ParakeetStreamOptions)
   | ({ kind: "parakeet_buffered" } & ParakeetBufferedStreamOptions)
   | ({ kind: "voxtral" } & VoxtralRealtimeStreamOptions)
+  | ({ kind: "voxtral_run" } & VoxtralRunOptions)
   | ({ kind: "sortformer" } & SortformerStreamOptions);

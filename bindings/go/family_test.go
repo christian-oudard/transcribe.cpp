@@ -46,7 +46,7 @@ func TestExtensionKindsAreDistinct(t *testing.T) {
 // interface cannot be assigned to that Family field at all.
 func TestExtensionSlots(t *testing.T) {
 	var run []RunExtension = []RunExtension{
-		&WhisperRunOptions{}, &SortformerStreamOptions{},
+		&WhisperRunOptions{}, &VoxtralRunOptions{}, &SortformerStreamOptions{},
 	}
 	var stream []StreamExtension = []StreamExtension{
 		&ParakeetStreamOptions{}, &ParakeetBufferedStreamOptions{},

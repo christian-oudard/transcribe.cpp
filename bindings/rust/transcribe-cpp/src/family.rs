@@ -60,6 +60,24 @@ pub struct VoxtralRealtimeStreamOptions {
     pub min_decode_interval_ms: Option<i32>,
 }
 
+/// Voxtral free-text instruction (run slot).
+///
+/// Voxtral is an audio-LLM, so this is an instruction to a language model
+/// rather than Whisper's decoder conditioning: it lands after the audio tokens
+/// in the instruct template, and the model may follow it loosely or ignore it.
+/// Biasing a transcript toward known vocabulary is the use it was exposed for,
+/// e.g. `"Transcribe. Expected terms: NixOS, nixpkgs, direnv."`.
+///
+/// It shares the decoder context window with the audio and the transcript,
+/// which this family caps hard, so keep it short. Combining it with
+/// [`Task::Translate`](crate::Task::Translate) is rejected: both want the one
+/// instruction slot.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct VoxtralRunOptions {
+    /// `None` or an empty string leaves the family in transcription mode.
+    pub instruction: Option<String>,
+}
+
 /// Sortformer streaming operating point (latency / accuracy trade-off).
 /// The menu is discrete (jointly-tuned bundles), not a latency dial;
 /// `Default` keeps the GGUF-shipped checkpoint configuration.
@@ -108,6 +126,7 @@ pub struct SortformerStreamOptions {
 #[non_exhaustive]
 pub enum RunExtension {
     Whisper(WhisperRunOptions),
+    Voxtral(VoxtralRunOptions),
     Sortformer(SortformerStreamOptions),
 }
 
@@ -130,6 +149,10 @@ pub(crate) enum RunExtRaw {
         ext: Box<sys::transcribe_whisper_run_ext>,
         _prompt: Option<CString>,
     },
+    Voxtral {
+        ext: Box<sys::transcribe_voxtral_run_ext>,
+        _instruction: Option<CString>,
+    },
     Sortformer(Box<sys::transcribe_sortformer_stream_ext>),
 }
 
@@ -139,6 +162,9 @@ impl RunExtRaw {
             // `ext` is field 0, so &ext == &the family struct.
             RunExtRaw::Whisper { ext, .. } => {
                 (&**ext) as *const sys::transcribe_whisper_run_ext as *const sys::transcribe_ext
+            }
+            RunExtRaw::Voxtral { ext, .. } => {
+                (&**ext) as *const sys::transcribe_voxtral_run_ext as *const sys::transcribe_ext
             }
             RunExtRaw::Sortformer(e) => {
                 (&**e) as *const sys::transcribe_sortformer_stream_ext as *const sys::transcribe_ext
@@ -174,6 +200,20 @@ impl RunExtension {
                 Ok(RunExtRaw::Whisper {
                     ext: Box::new(ext),
                     _prompt: prompt,
+                })
+            }
+            RunExtension::Voxtral(o) => {
+                let mut ext: sys::transcribe_voxtral_run_ext = unsafe { std::mem::zeroed() };
+                unsafe { sys::transcribe_voxtral_run_ext_init(&mut ext) };
+                // An interior NUL is Error::Nul rather than a silently
+                // truncated instruction, as for Whisper's prompt.
+                let instruction = o.instruction.as_deref().map(CString::new).transpose()?;
+                if let Some(c) = instruction.as_ref() {
+                    ext.instruction = c.as_ptr();
+                }
+                Ok(RunExtRaw::Voxtral {
+                    ext: Box::new(ext),
+                    _instruction: instruction,
                 })
             }
             RunExtension::Sortformer(o) => {

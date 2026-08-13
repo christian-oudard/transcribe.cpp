@@ -1142,6 +1142,32 @@ if(TRANSCRIBE_BUILD_REAL_MODEL_TESTS)
 endif()
 
 # -----------------------------------------------------------------------------
+# Voxtral free-text instruction run extension
+# -----------------------------------------------------------------------------
+#
+# Kind/slot probe, init stamping, pre-clear rejection with snapshot
+# preservation (wrong kind, and an instruction combined with TASK_TRANSLATE),
+# and that an instruction is accepted and still transcribes. Gated by
+# TRANSCRIBE_VOXTRAL_GGUF (RC 77 skip).
+if(TRANSCRIBE_BUILD_TESTS)
+    add_executable(transcribe_voxtral_run_ext_unit
+        voxtral_run_ext_unit.cpp)
+
+    target_link_libraries(transcribe_voxtral_run_ext_unit
+        PRIVATE transcribe transcribe-common-example)
+
+    target_compile_definitions(transcribe_voxtral_run_ext_unit PRIVATE
+        "TRANSCRIBE_TEST_SAMPLES_DIR=\"${CMAKE_SOURCE_DIR}/samples\"")
+
+    transcribe_apply_warnings(transcribe_voxtral_run_ext_unit)
+
+    add_test(NAME transcribe_voxtral_run_ext_unit
+        COMMAND transcribe_voxtral_run_ext_unit)
+    set_tests_properties(transcribe_voxtral_run_ext_unit PROPERTIES
+        SKIP_RETURN_CODE 77)
+endif()
+
+# -----------------------------------------------------------------------------
 # Debug tensor dumper round-trip unit
 # -----------------------------------------------------------------------------
 #

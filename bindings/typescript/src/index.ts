@@ -589,6 +589,13 @@ const FAMILY: Record<string, FamilyReg> = {
       min_decode_interval_ms: o.minDecodeIntervalMs,
     }),
   },
+  voxtral_run: {
+    slot: "run",
+    kind: g.TRANSCRIBE_EXT_KIND_VOXTRAL_RUN,
+    type: "transcribe_voxtral_run_ext",
+    init: "voxtralRunExtInit",
+    map: (o) => ({ instruction: o.instruction }),
+  },
   sortformer: {
     slot: "run",
     kind: g.TRANSCRIBE_EXT_KIND_SORTFORMER_STREAM,

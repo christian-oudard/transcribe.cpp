@@ -40,6 +40,7 @@ type ExtKind uint32
 
 const (
 	KindWhisperRun             ExtKind = C.TRANSCRIBE_EXT_KIND_WHISPER_RUN
+	KindVoxtralRun             ExtKind = C.TRANSCRIBE_EXT_KIND_VOXTRAL_RUN
 	KindSortformerStream       ExtKind = C.TRANSCRIBE_EXT_KIND_SORTFORMER_STREAM
 	KindParakeetStream         ExtKind = C.TRANSCRIBE_EXT_KIND_PARAKEET_STREAM
 	KindParakeetBufferedStream ExtKind = C.TRANSCRIBE_EXT_KIND_PARAKEET_BUFFERED_STREAM
@@ -186,6 +187,39 @@ func (o *WhisperRunOptions) runExt() (*C.struct_transcribe_ext, func()) {
 		for _, f := range frees {
 			f()
 		}
+	}
+}
+
+// VoxtralRunOptions is voxtral's free-text instruction, which is what the
+// family's initial-prompt capability actually is.
+//
+// Voxtral is an audio-LLM, so this is an instruction to a language model
+// rather than whisper's decoder conditioning: it lands after the audio tokens
+// inside the instruct template, and the model is free to follow it loosely or
+// not at all. Biasing a transcript toward known vocabulary is the use it was
+// exposed for, e.g. "Transcribe. Expected terms: NixOS, nixpkgs, direnv."
+//
+// It shares the decoder's context window with the audio and the transcript,
+// which voxtral caps hard, so keep it short. Combining it with TaskTranslate
+// is ErrInvalidArg, since both want the one instruction slot.
+type VoxtralRunOptions struct {
+	Instruction string
+}
+
+func (o *VoxtralRunOptions) Kind() ExtKind { return KindVoxtralRun }
+
+func (o *VoxtralRunOptions) runExt() (*C.struct_transcribe_ext, func()) {
+	mem, free := alloc(unsafe.Sizeof(C.struct_transcribe_voxtral_run_ext{}))
+	e := (*C.struct_transcribe_voxtral_run_ext)(mem)
+	C.transcribe_voxtral_run_ext_init(e)
+	if o.Instruction == "" {
+		return (*C.struct_transcribe_ext)(mem), free
+	}
+	c := C.CString(o.Instruction)
+	e.instruction = c
+	return (*C.struct_transcribe_ext)(mem), func() {
+		C.free(unsafe.Pointer(c))
+		free()
 	}
 }
 
