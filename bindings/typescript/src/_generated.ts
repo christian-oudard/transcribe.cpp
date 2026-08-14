@@ -11,7 +11,7 @@
 // Stable digest of the ABI surface (structs, enums, macros, layout,
 // prototypes), computed by the Python oracle and pinned here so a header
 // ABI change turns this binding's drift check red for conscious review.
-export const PUBLIC_HEADER_HASH = "adc05d5218675ecb";
+export const PUBLIC_HEADER_HASH = "6add59d419a81f2a";
 
 // === enum constants ===
 export const TRANSCRIBE_OK = 0;
@@ -195,6 +195,8 @@ export const FUNCTION_SIGNATURES: Record<string, FnSig> = {
   'transcribe_abi_struct_align': { ret: 'size_t', args: ['transcribe_abi_struct'] },
   'transcribe_abi_struct_size': { ret: 'size_t', args: ['transcribe_abi_struct'] },
   'transcribe_backend_available': { ret: '_Bool', args: ['transcribe_backend_request'] },
+  'transcribe_backend_device_compiled_kernel_name': { ret: 'const char *', args: ['int', 'uint64_t'] },
+  'transcribe_backend_device_compiled_kernels': { ret: 'uint64_t', args: ['int'] },
   'transcribe_backend_device_count': { ret: 'int', args: [] },
   'transcribe_backend_device_init': { ret: 'void', args: ['struct transcribe_backend_device *'] },
   'transcribe_batch_detected_language': { ret: 'const char *', args: ['const struct transcribe_session *', 'int'] },

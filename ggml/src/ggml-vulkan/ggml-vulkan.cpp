@@ -16608,6 +16608,25 @@ size_t ggml_backend_vk_get_device_compiled_pipelines(int device) {
     return dev->all_pipelines.size();
 }
 
+const char * ggml_backend_vk_get_device_compiled_pipeline_name(int device, size_t index) {
+    GGML_ASSERT(device < (int) vk_instance.device_indices.size());
+    if (vk_instance.devices[device] == nullptr) {
+        return nullptr;
+    }
+    vk_device& dev = vk_instance.devices[device];
+    std::lock_guard<std::mutex> guard(dev->compile_mutex);
+    if (index >= dev->all_pipelines.size()) {
+        return nullptr;
+    }
+    // The list holds weak references, so a pipeline dropped since it was
+    // compiled reads as an empty name rather than a dangling pointer.
+    vk_pipeline pipeline = dev->all_pipelines[index].lock();
+    if (pipeline == nullptr) {
+        return "";
+    }
+    return pipeline->name.c_str();
+}
+
 void ggml_backend_vk_get_device_memory(int device, size_t * free, size_t * total) {
     GGML_ASSERT(device < (int) vk_instance.device_indices.size());
     GGML_ASSERT(device < (int) vk_instance.device_supports_membudget.size());
@@ -17523,6 +17542,9 @@ static void * ggml_backend_vk_reg_get_proc_address(ggml_backend_reg_t reg, const
     GGML_UNUSED(reg);
     if (strcmp(name, "ggml_backend_vk_get_device_compiled_pipelines") == 0) {
         return (void *) ggml_backend_vk_get_device_compiled_pipelines;
+    }
+    if (strcmp(name, "ggml_backend_vk_get_device_compiled_pipeline_name") == 0) {
+        return (void *) ggml_backend_vk_get_device_compiled_pipeline_name;
     }
     return NULL;
 }

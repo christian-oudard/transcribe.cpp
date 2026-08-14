@@ -23,6 +23,12 @@ GGML_BACKEND_API void ggml_backend_vk_get_device_memory(int device, size_t * fre
 // it to tell "this run was slow because the model is big" from "this run was
 // slow because it was still compiling". 0 if the device was never initialized.
 GGML_BACKEND_API size_t ggml_backend_vk_get_device_compiled_pipelines(int device);
+// The name of the pipeline this device compiled at `index`, in compile order,
+// or NULL past the end. Names carry the variant, so they say what a new shape
+// actually needed: which matmul tile size it selected, and whether its
+// dimensions let it take the aligned path. The string belongs to the device
+// and stays valid until the device is freed.
+GGML_BACKEND_API const char * ggml_backend_vk_get_device_compiled_pipeline_name(int device, size_t index);
 
 GGML_BACKEND_API ggml_backend_buffer_type_t ggml_backend_vk_buffer_type(size_t dev_num);
 // pinned host buffer for use with the CPU backend for faster copies between CPU and GPU

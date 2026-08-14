@@ -213,6 +213,23 @@ func CompiledKernels(index int) uint64 {
 	return uint64(C.transcribe_backend_device_compiled_kernels(C.int(index)))
 }
 
+// CompiledKernelNames are the kernels the device at index has built, in
+// compile order, or nil for a backend that does not report names.
+//
+// The count says a shape was new; these say what was new about it, since a
+// backend picks among variants of one operation by the dimensions it is given.
+// Read them either side of a run to see which variants that run pulled in.
+func CompiledKernelNames(index int) []string {
+	var names []string
+	for i := uint64(0); ; i++ {
+		name := C.transcribe_backend_device_compiled_kernel_name(C.int(index), C.uint64_t(i))
+		if name == nil {
+			return names
+		}
+		names = append(names, C.GoString(name))
+	}
+}
+
 // getDevice returns the device at index, which is stable for the life of the
 // process, so the same index always names the same device.
 func getDevice(index int) (Device, error) {

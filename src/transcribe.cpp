@@ -1043,6 +1043,30 @@ static uint64_t transcribe_backend_device_compiled_kernels_impl(int index) {
     return 0;
 }
 
+// The name of one of those kernels, asked for the same way, so a backend that
+// reports counts but not names answers nullptr rather than needing a case.
+static const char * transcribe_backend_device_compiled_kernel_name_impl(int index, uint64_t kernel) {
+    if (index < 0 || index >= static_cast<int>(ggml_backend_dev_count())) {
+        return nullptr;
+    }
+    ggml_backend_dev_t dev = ggml_backend_dev_get(static_cast<size_t>(index));
+    ggml_backend_reg_t reg = ggml_backend_dev_backend_reg(dev);
+    if (reg == nullptr) {
+        return nullptr;
+    }
+    auto fn = reinterpret_cast<const char * (*)(int, size_t)>(
+        ggml_backend_reg_get_proc_address(reg, "ggml_backend_vk_get_device_compiled_pipeline_name"));
+    if (fn == nullptr) {
+        return nullptr;
+    }
+    for (size_t i = 0, n = ggml_backend_reg_dev_count(reg); i < n; ++i) {
+        if (ggml_backend_reg_dev_get(reg, i) == dev) {
+            return fn(static_cast<int>(i), static_cast<size_t>(kernel));
+        }
+    }
+    return nullptr;
+}
+
 static transcribe_status transcribe_get_backend_device_impl(int index, struct transcribe_backend_device * out) {
     if (out == nullptr) {
         return TRANSCRIBE_ERR_INVALID_ARG;
@@ -3161,6 +3185,12 @@ extern "C" transcribe_status transcribe_get_backend_device(int index, struct tra
 extern "C" uint64_t transcribe_backend_device_compiled_kernels(int index) {
     return api_guard_value("transcribe_backend_device_compiled_kernels", uint64_t{ 0 },
                            [&] { return transcribe_backend_device_compiled_kernels_impl(index); });
+}
+
+extern "C" const char * transcribe_backend_device_compiled_kernel_name(int index, uint64_t kernel) {
+    return api_guard_value("transcribe_backend_device_compiled_kernel_name",
+                           static_cast<const char *>(nullptr),
+                           [&] { return transcribe_backend_device_compiled_kernel_name_impl(index, kernel); });
 }
 
 extern "C" bool transcribe_backend_available(transcribe_backend_request kind) {

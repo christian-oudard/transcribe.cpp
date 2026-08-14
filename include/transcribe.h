@@ -883,6 +883,23 @@ TRANSCRIBE_API transcribe_status transcribe_get_backend_device(int index, struct
 TRANSCRIBE_API uint64_t transcribe_backend_device_compiled_kernels(int index);
 
 /*
+ * The name of the kernel device `index` compiled at `kernel`, counting in
+ * compile order from 0, or NULL past the end and for a backend that does not
+ * report names.
+ *
+ * The count says a shape was new; the names say what was new about it. A
+ * backend picks among variants of the same operation by the dimensions it is
+ * given, so the names distinguish the tile size a matrix multiply selected and
+ * whether its dimensions let it take the aligned path. A caller warming a
+ * model can read them around each throwaway run to see which of its runs
+ * earned its place, rather than inferring it from timings.
+ *
+ * The string belongs to the device and stays valid while it is loaded. Asking
+ * never compiles anything and never initializes a device.
+ */
+TRANSCRIBE_API const char * transcribe_backend_device_compiled_kernel_name(int index, uint64_t kernel);
+
+/*
  * Whether a backend request can be satisfied by some registered device:
  * AUTO whenever any device exists; CPU and CPU_ACCEL when a CPU device
  * exists; METAL / VULKAN / CUDA / ROCM when a device of that kind exists.
