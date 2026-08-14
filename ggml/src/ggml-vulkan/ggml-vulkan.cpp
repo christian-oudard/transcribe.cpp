@@ -16595,6 +16595,19 @@ void ggml_backend_vk_get_device_description(int device, char * description, size
     ggml_vk_get_device_description(dev_idx, description, description_size);
 }
 
+size_t ggml_backend_vk_get_device_compiled_pipelines(int device) {
+    GGML_ASSERT(device < (int) vk_instance.device_indices.size());
+    // Report what has been compiled, without compiling anything: asking must
+    // not be the thing that initializes a device. devices[] is keyed by the
+    // backend device number, the same index this call takes.
+    if (vk_instance.devices[device] == nullptr) {
+        return 0;
+    }
+    vk_device& dev = vk_instance.devices[device];
+    std::lock_guard<std::mutex> guard(dev->compile_mutex);
+    return dev->all_pipelines.size();
+}
+
 void ggml_backend_vk_get_device_memory(int device, size_t * free, size_t * total) {
     GGML_ASSERT(device < (int) vk_instance.device_indices.size());
     GGML_ASSERT(device < (int) vk_instance.device_supports_membudget.size());
@@ -17506,11 +17519,19 @@ static ggml_backend_dev_t ggml_backend_vk_reg_get_device(ggml_backend_reg_t reg,
     return devices[device];
 }
 
+static void * ggml_backend_vk_reg_get_proc_address(ggml_backend_reg_t reg, const char * name) {
+    GGML_UNUSED(reg);
+    if (strcmp(name, "ggml_backend_vk_get_device_compiled_pipelines") == 0) {
+        return (void *) ggml_backend_vk_get_device_compiled_pipelines;
+    }
+    return NULL;
+}
+
 static const struct ggml_backend_reg_i ggml_backend_vk_reg_i = {
     /* .get_name         = */ ggml_backend_vk_reg_get_name,
     /* .get_device_count = */ ggml_backend_vk_reg_get_device_count,
     /* .get_device       = */ ggml_backend_vk_reg_get_device,
-    /* .get_proc_address = */ NULL,
+    /* .get_proc_address = */ ggml_backend_vk_reg_get_proc_address,
 };
 
 ggml_backend_reg_t ggml_backend_vk_reg() {

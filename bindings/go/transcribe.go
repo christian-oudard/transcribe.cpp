@@ -200,6 +200,19 @@ type Device struct {
 // DeviceCount is how many compute devices are registered.
 func DeviceCount() int { return int(C.transcribe_backend_device_count()) }
 
+// CompiledKernels is how many compute kernels the device at index has built
+// so far, or 0 for a backend that does not report it, today anything but
+// Vulkan.
+//
+// Backends that build kernels at runtime do it on first use, so this rises the
+// first time a graph needs a shape no earlier graph did, and settles once a
+// workload is warm. It is what separates a slow run from a cold one: run
+// throwaway work while the count moves, stop when it settles, and a rise
+// during real work says the warmup missed a shape. Asking compiles nothing.
+func CompiledKernels(index int) uint64 {
+	return uint64(C.transcribe_backend_device_compiled_kernels(C.int(index)))
+}
+
 // getDevice returns the device at index, which is stable for the life of the
 // process, so the same index always names the same device.
 func getDevice(index int) (Device, error) {

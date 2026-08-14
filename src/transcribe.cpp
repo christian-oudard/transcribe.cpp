@@ -1016,6 +1016,33 @@ static int transcribe_backend_device_count_impl(void) {
     return static_cast<int>(ggml_backend_dev_count());
 }
 
+// How many compute kernels device `index` has compiled. Backend-specific and
+// asked for through ggml's proc-address table, so a backend that does not
+// report it answers 0 rather than needing a case here.
+static uint64_t transcribe_backend_device_compiled_kernels_impl(int index) {
+    if (index < 0 || index >= static_cast<int>(ggml_backend_dev_count())) {
+        return 0;
+    }
+    ggml_backend_dev_t dev = ggml_backend_dev_get(static_cast<size_t>(index));
+    ggml_backend_reg_t reg = ggml_backend_dev_backend_reg(dev);
+    if (reg == nullptr) {
+        return 0;
+    }
+    auto fn = reinterpret_cast<size_t (*)(int)>(
+        ggml_backend_reg_get_proc_address(reg, "ggml_backend_vk_get_device_compiled_pipelines"));
+    if (fn == nullptr) {
+        return 0;
+    }
+    // The backend counts its own devices, so translate the runtime-wide index
+    // into that backend's local one.
+    for (size_t i = 0, n = ggml_backend_reg_dev_count(reg); i < n; ++i) {
+        if (ggml_backend_reg_dev_get(reg, i) == dev) {
+            return fn(static_cast<int>(i));
+        }
+    }
+    return 0;
+}
+
 static transcribe_status transcribe_get_backend_device_impl(int index, struct transcribe_backend_device * out) {
     if (out == nullptr) {
         return TRANSCRIBE_ERR_INVALID_ARG;
@@ -3129,6 +3156,11 @@ extern "C" int transcribe_backend_device_count(void) {
 extern "C" transcribe_status transcribe_get_backend_device(int index, struct transcribe_backend_device * out) {
     return api_guard_status("transcribe_get_backend_device",
                             [&] { return transcribe_get_backend_device_impl(index, out); });
+}
+
+extern "C" uint64_t transcribe_backend_device_compiled_kernels(int index) {
+    return api_guard_value("transcribe_backend_device_compiled_kernels", uint64_t{ 0 },
+                           [&] { return transcribe_backend_device_compiled_kernels_impl(index); });
 }
 
 extern "C" bool transcribe_backend_available(transcribe_backend_request kind) {

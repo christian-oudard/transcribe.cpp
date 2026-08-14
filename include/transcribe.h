@@ -866,6 +866,23 @@ TRANSCRIBE_API void transcribe_backend_device_init(struct transcribe_backend_dev
 TRANSCRIBE_API transcribe_status transcribe_get_backend_device(int index, struct transcribe_backend_device * out);
 
 /*
+ * How many compute kernels device `index` has compiled so far, or 0 for a
+ * backend that does not report it (today only Vulkan does) and for an index
+ * out of range.
+ *
+ * Backends that build kernels at runtime do it on first use, so this rises
+ * the first time a graph needs a shape no earlier graph did and stops rising
+ * once a workload is warm. That makes it the way to tell a slow run apart
+ * from a cold one: a caller doing throwaway runs to warm a model can keep
+ * going while the count moves and stop when it settles, rather than guessing
+ * at how many shapes the model has. A caller can also check it around real
+ * work: a rise there means the warmup missed a shape.
+ *
+ * Asking never compiles anything and never initializes a device.
+ */
+TRANSCRIBE_API uint64_t transcribe_backend_device_compiled_kernels(int index);
+
+/*
  * Whether a backend request can be satisfied by some registered device:
  * AUTO whenever any device exists; CPU and CPU_ACCEL when a CPU device
  * exists; METAL / VULKAN / CUDA / ROCM when a device of that kind exists.
