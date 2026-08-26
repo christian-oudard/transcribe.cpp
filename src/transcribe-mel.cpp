@@ -820,8 +820,16 @@ transcribe_status MelFrontend::compute(const float *        pcm,
     // offline runs NeMo's seq_len == n_frames so it masks nothing — the
     // pad_mode gate preserves that.
     //
+    // Nor when get_seq_len is the ceiling (nemo_seq_len_ceil): there NeMo's
+    // seq_len is n_frames itself, so there is no frame beyond it to mask and
+    // the last one carries real audio. Masking it anyway cost TitaNet the
+    // final frame of every clip, which moved the whole embedding: the clip
+    // statistics it pools over are taken across the frames, so one wrong
+    // frame in eleven hundred is not a rounding error, it is a different
+    // vector.
+    //
     // resize() not assign(): the loop writes every element once.
-    const bool mask_last = (cfg_.pad_mode == "constant");
+    const bool mask_last = (cfg_.pad_mode == "constant") && !cfg_.nemo_seq_len_ceil;
     const int  n_norm    = mask_last ? (n_frames - 1) : n_frames;
 
     out_mel.resize(static_cast<size_t>(n_mels) * static_cast<size_t>(n_frames));

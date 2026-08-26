@@ -64,6 +64,9 @@ add_library(transcribe
     arch/sortformer/stream.cpp
     arch/sortformer/capabilities.cpp
     arch/sortformer/weights.cpp
+    arch/titanet/model.cpp
+    arch/titanet/capabilities.cpp
+    arch/titanet/weights.cpp
     arch/voxtral/model.cpp
     arch/voxtral/capabilities.cpp
     arch/voxtral/weights.cpp

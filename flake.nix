@@ -54,6 +54,16 @@
               pkgs.go
               pkgs.uv
             ];
+            # The reference environments under scripts/envs are uv-installed
+            # manylinux wheels: numpy, torch, NeMo. They dlopen libz and
+            # libstdc++ by SONAME and find neither in a nix shell, so
+            # `uv run scripts/convert-*.py` dies inside `import numpy` with
+            # "libz.so.1: cannot open shared object file". Nothing links
+            # against these; they only have to be findable at runtime.
+            LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
+              pkgs.zlib
+              pkgs.stdenv.cc.cc.lib
+            ];
           };
         }
       );

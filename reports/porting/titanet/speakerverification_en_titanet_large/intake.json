@@ -1,0 +1,113 @@
+{
+  "schema_version": "transcribe-intake-v1",
+  "family": "titanet",
+  "hf_repo": "nvidia/speakerverification_en_titanet_large",
+  "hf_revision": "0dc382f40121a5fbd34db10a2bb04d826c2be6a8",
+  "sources": {
+    "config": {
+      "kind": "hf_file",
+      "path": "config.json",
+      "status": "missing"
+    },
+    "preprocessor": {
+      "kind": "hf_file",
+      "path": "preprocessor_config.json|feature_extractor_config.json",
+      "status": "missing"
+    },
+    "tokenizer_config": {
+      "kind": "hf_file",
+      "path": "tokenizer_config.json",
+      "status": "missing"
+    },
+    "tokenizer_json": {
+      "kind": "hf_file",
+      "path": "tokenizer.json",
+      "status": "missing"
+    },
+    "generation_config": {
+      "kind": "hf_file",
+      "path": "generation_config.json",
+      "status": "missing"
+    },
+    "safetensors_metadata": {
+      "kind": "hf_api",
+      "path": "HfApi.get_safetensors_metadata",
+      "status": "missing",
+      "detail": "header-only floating dtype distribution; no tensor payloads downloaded"
+    }
+  },
+  "variants": [
+    {
+      "name": "speakerverification_en_titanet_large",
+      "memory_gb": null,
+      "files": []
+    }
+  ],
+  "config": {
+    "architecture_candidates": [],
+    "key_fields": {}
+  },
+  "dtype": {
+    "expected": "F32",
+    "source": "unresolved",
+    "evidence": "No config dtype and no safetensors metadata; fill from reference code",
+    "details": {
+      "config_declared": null,
+      "header_distribution": {}
+    }
+  },
+  "frontend": {},
+  "tokenizer": {
+    "type": "other",
+    "vocab_size": 0,
+    "special_tokens": {},
+    "has_language_tokens": false,
+    "vocab_sha256": null
+  },
+  "capabilities": {
+    "languages": [
+      "en"
+    ],
+    "language_detection": false,
+    "translation": false,
+    "timestamps": [],
+    "streaming": false,
+    "speaker_diarization": false
+  },
+  "upstream_benchmarks": [],
+  "reference_framework": "nemo",
+  "reference_rationale": "TitaNet ships only as a .nemo checkpoint and EncDecSpeakerLabelModel is its sole reference implementation. The same NeMo pin already backs the sortformer and parakeet envs, so the oracle path is the one this repo already uses for NVIDIA models.",
+  "architecture_pattern": "encoder-embedding",
+  "known_risks": [
+    "No transcript, so the pipeline's WER gate does not apply. Accuracy is equal error rate over verification trials, plus cosine agreement with the reference embedding per clip at the tensor level.",
+    "Attentive statistics pooling takes a softmax over the whole clip and a standard deviation across it, so the graph is not a per-frame stream and its numerics differ from any encoder already ported.",
+    "Squeeze-excite uses se_context_size -1, a mean over the entire clip, which makes every frame depend on every other and rules out chunked evaluation as a shortcut for validation.",
+    "The 16681-way angular softmax head is training-only and is dropped. Nothing downstream should ever read it: it classifies the training speakers."
+  ],
+  "intake_gaps": [
+    {
+      "field": "config",
+      "reason": "config.json not found"
+    },
+    {
+      "field": "frontend",
+      "reason": "preprocessor_config.json not found; fill from reference code"
+    },
+    {
+      "field": "dtype",
+      "reason": "No config dtype and no safetensors metadata; fill from reference code"
+    },
+    {
+      "field": "capabilities.languages",
+      "reason": "no language list in config; fill from model card (BCP-47 codes)"
+    },
+    {
+      "field": "capabilities",
+      "reason": "translation, timestamps, streaming, VAD, and diarization flags require reading the model card; fill before intake sign-off"
+    },
+    {
+      "field": "upstream_benchmarks",
+      "reason": "publisher-reported WER/CER scores are not auto-scraped; add entries from the model card during research"
+    }
+  ]
+}
