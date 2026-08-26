@@ -19,7 +19,10 @@ double rms(const float * x, int32_t n) {
 
 }  // namespace
 
-std::vector<Window> speech_windows(const float * pcm, int32_t n_samples, const WindowConfig & config) {
+std::vector<Window> speech_windows(const float *               pcm,
+                                   int32_t                     n_samples,
+                                   const WindowConfig &        config,
+                                   const std::vector<Region> & regions) {
     const int32_t width = static_cast<int32_t>(config.window_seconds * static_cast<float>(config.sample_rate));
     const int32_t hop   = static_cast<int32_t>(config.hop_seconds * static_cast<float>(config.sample_rate));
     if (pcm == nullptr || n_samples <= 0 || width <= 0 || hop <= 0) {
@@ -34,6 +37,35 @@ std::vector<Window> speech_windows(const float * pcm, int32_t n_samples, const W
     // is a speaker turn, and dropping it would lose the only voice there is.
     if (all.empty()) {
         all.push_back({ 0, n_samples });
+    }
+
+    if (!regions.empty()) {
+        // A 10 ms mask, which is finer than any segmenter's boundaries and
+        // coarse enough to test a window against by counting.
+        const int32_t     step = config.sample_rate / 100;
+        std::vector<bool> speech(static_cast<size_t>(n_samples / step + 1), false);
+        for (const Region & r : regions) {
+            const int64_t from = std::max<int64_t>(0, r.t0_ms) * config.sample_rate / 1000 / step;
+            const int64_t to   = std::min<int64_t>(r.t1_ms, static_cast<int64_t>(n_samples) * 1000 / config.sample_rate)
+                               * config.sample_rate / 1000 / step;
+            for (int64_t i = from; i < to && i < static_cast<int64_t>(speech.size()); ++i) {
+                speech[static_cast<size_t>(i)] = true;
+            }
+        }
+        std::vector<Window> kept;
+        for (const Window & w : all) {
+            int32_t inside = 0, total = 0;
+            for (int32_t i = w.from / step; i < w.to / step && i < static_cast<int32_t>(speech.size()); ++i) {
+                ++total;
+                if (speech[static_cast<size_t>(i)]) {
+                    ++inside;
+                }
+            }
+            if (total > 0 && inside * 2 >= total) {
+                kept.push_back(w);
+            }
+        }
+        return kept;
     }
 
     std::vector<double> level(all.size());

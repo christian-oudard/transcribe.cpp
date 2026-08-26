@@ -32,16 +32,17 @@ namespace transcribe::titanet {
 
 namespace dz = transcribe::diarize;
 
-transcribe_status diarize(TitanetSession * pc,
-                          TitanetModel *   pm,
-                          const float *    pcm,
-                          int              n_samples,
-                          int32_t          num_speakers,
-                          float            threshold) {
+transcribe_status diarize(TitanetSession *              pc,
+                          TitanetModel *                pm,
+                          const float *                 pcm,
+                          int                           n_samples,
+                          int32_t                       num_speakers,
+                          float                         threshold,
+                          const std::vector<dz::Region> & speech) {
     dz::WindowConfig wcfg;
     wcfg.sample_rate = pm->hparams.fe_sample_rate;
 
-    const std::vector<dz::Window> windows = dz::speech_windows(pcm, n_samples, wcfg);
+    const std::vector<dz::Window> windows = dz::speech_windows(pcm, n_samples, wcfg, speech);
     if (windows.empty()) {
         // No speech to attribute is a legitimate answer, not a failure: a
         // recording of an empty room diarizes into nothing.

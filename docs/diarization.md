@@ -27,6 +27,23 @@ A caller who knows the number of speakers should say so
 It is a fact about the room, and it outranks anything inferred from distances
 between voices.
 
+A caller who knows where the speech is should say that too
+(`::speech_ms`, `transcribe-cli --speech`), and it is worth more. Given
+regions, a window is embedded when at least half of it falls inside one and
+loudness is not consulted at all. Measured with regions taken from the word
+timings of a transcriber that had already run over the same audio:
+
+| meeting | found | confusion | with regions |
+|---------|-------|-----------|--------------|
+| ES2011a | 4 → 4 | 11.3% → 11.1% | 2.6% missed |
+| IS1008a | 5 → **4** |  4.6% → **4.1%** | 0.2% missed |
+| ES2011c | 5 → 5 |  8.4% → **7.3%** | 1.3% missed |
+
+Better on every meeting, and one of the two wrong counts is fixed. The one
+that is not is the meeting where the transcriber produced words over the
+non-speech as well, so the mask kept it: a mask is only as honest as whatever
+drew it.
+
 ## Where it stands
 
 Speaker confusion against the AMI dev references (BUT diarization setup),
@@ -120,6 +137,12 @@ against 18 s on one meeting, 246 s on another -- because the eigendecomposition
 is cubic in the sample. 400 is not a compromise, it is past the point where
 more stops helping.
 
+**Unioning the masks.** Words and sortformer regions together, since each
+finds speech the other misses: 4, 5 and 4 speakers on the three meetings
+measured, against 4, 5 and 4 for words alone, with confusion a few tenths
+worse. A more permissive mask does not help when the problem is a mask that is
+already too permissive.
+
 **Turn-bounded windows.** Placing windows inside a segmenter's turns rather
 than on a fixed grid, so that none straddles a speaker change. Scored on
 windows a single speaker fully covers, it was no better than the uniform grid
@@ -140,6 +163,28 @@ TitaNet -- a different architecture trained on different data -- and it returns
 the same five speakers on IS1008a. Two independent embeddings making the same
 mistake is not an embedding problem.
 
+**A syllabic-rate gate.** People produce syllables two to eight times a second,
+so a window of speech should have most of its envelope movement in that band
+and a window of noise should not. It does separate them in distribution -- on
+IS1008a, speech at 0.37 [0.30-0.43] against non-speech at 0.25 [0.17-0.37] --
+and the counts improve: three of the four meetings come back with four
+speakers instead of five.
+
+It is still not usable, because the threshold that removes the non-speech
+removes a third of the speech with it. Implemented and measured end to end:
+
+| meeting | found | missed speech | confusion |
+|---------|-------|---------------|-----------|
+| ES2011a | 3     | 38.8%         | 19.4%     |
+| IS1008a | 4     |  4.2%         |  3.2%     |
+| ES2011c | 4     | 32.2%         |  3.7%     |
+| TS3004a | 5     |  7.7%         | 13.5%     |
+
+Two meetings lose a third of their speech to buy a speaker count. That is the
+wrong trade, and it is worth noticing that the experiment which chose the
+threshold measured only the count -- the coverage cost was visible in the
+window totals at the time and went unweighed.
+
 ## What would move it
 
 Speech detection, which this deliberately does not do. Windows quieter than a
@@ -148,9 +193,20 @@ measurement above says exactly what that costs: a minute and a half of audible
 non-speech per meeting, coherent enough to cluster, arriving at the counting
 stage as a fifth speaker.
 
-sortformer is already in this library and decides speech on more than loudness.
-Putting its speech regions in front of the windowing is the next thing to try,
-and it is now the only repair with evidence behind it rather than an intuition.
+A trained voice activity detector, which is a model rather than a feature. Two
+substitutes have now been measured and neither works: a hand-rolled syllabic
+gate removes a third of the speech at the threshold that removes the noise, and
+sortformer's own speech regions -- it decides on more than loudness, and does
+fix the count on the two meetings where the extra cluster is noise -- lose a
+speaker on a third meeting, because a diarizer capped at four speakers reports
+speech only where it has assigned one.
+
+silero-vad is about a megabyte and does exactly this job. That is the shape of
+the remaining work: a small port, not a threshold.
+
+One thing no gate will fix: ES2011a has a speaker who talks for 25 seconds in
+14 minutes. Every filter tried drops them, and the count then says three. A
+speaker that brief is at the edge of what clustering can find at all.
 
 Note that this is not the same as turn-bounded windows, which were tried and
 did not help: that experiment moved where the windows *start*, scored on

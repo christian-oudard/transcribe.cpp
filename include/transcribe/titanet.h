@@ -57,6 +57,24 @@ struct transcribe_titanet_diarize_ext {
      * cannot leave that interval.
      */
     float threshold;
+
+    /*
+     * Where the speech is, as pairs of milliseconds (start, end), and how many
+     * pairs. NULL leaves the model to find speech by loudness alone.
+     *
+     * Worth supplying, and the reason is measured. Loudness cannot tell a
+     * voice from a chair or a keyboard: on two AMI meetings it passed 97 and
+     * 172 seconds of audible non-speech, which then clustered coherently and
+     * arrived as an extra speaker in a room of four. Regions from anything
+     * that decides speech on more than energy -- a voice activity detector, a
+     * segmenter, or the word timings of a transcriber that has already run
+     * over the same audio -- remove that cluster.
+     *
+     * A window is embedded when at least half of it falls inside a region.
+     * Regions need not be sorted and may overlap.
+     */
+    const int64_t * speech_ms;
+    int32_t         n_speech;
 };
 
 /* Stamps the header (size + kind) and clears both fields to their

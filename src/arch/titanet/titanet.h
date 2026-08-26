@@ -22,6 +22,7 @@
 #include "transcribe-mel.h"
 #include "transcribe-model.h"
 #include "transcribe-session.h"
+#include "../../diarize/windows.h"
 #include "weights.h"
 
 #include <optional>
@@ -91,8 +92,13 @@ EmbedGraph build_embed_graph(ggml_context * ctx, const TitanetModel & m, int T, 
 // Window the recording, embed each window, cluster the embeddings, and put
 // the resulting who-spoke-when rows on the session. This is the whole
 // diarization path; see src/diarize/.
-transcribe_status diarize(TitanetSession * pc, TitanetModel * pm, const float * pcm, int n_samples,
-                          int32_t num_speakers, float threshold);
+transcribe_status diarize(TitanetSession *                            pc,
+                          TitanetModel *                              pm,
+                          const float *                               pcm,
+                          int                                         n_samples,
+                          int32_t                                     num_speakers,
+                          float                                       threshold,
+                          const std::vector<transcribe::diarize::Region> & speech);
 
 extern const Arch arch;
 

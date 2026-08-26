@@ -99,6 +99,29 @@ int main() {
         check(rows_from_labels(w, labels, rate).empty(), "a label per window, or no rows");
     }
 
+    // Given regions, loudness is not consulted: a caller who knows where the
+    // speech is knows better than an energy threshold, and the whole point is
+    // to keep audible non-speech out.
+    {
+        std::vector<float>  pcm = alternating(rate, 6, 4);  // loud, quiet, loud, quiet
+        std::vector<Region> speech = { { 0, 6000 } };       // only the first block
+        std::vector<Window> windows = speech_windows(pcm.data(), static_cast<int32_t>(pcm.size()), cfg, speech);
+        check(!windows.empty(), "windows are taken from inside the region");
+        for (const Window & w : windows) {
+            const double mid = 0.5 * (w.from + w.to) / rate;
+            check(mid < 6.5, "no window comes from outside the speech regions");
+        }
+    }
+
+    // A loud stretch the caller did not call speech is dropped, which an
+    // energy gate would have kept. This is the case the regions exist for.
+    {
+        std::vector<float>  pcm = alternating(rate, 6, 2);   // loud, quiet
+        std::vector<Region> speech = { { 12000, 18000 } };   // past the end of the audio
+        check(speech_windows(pcm.data(), static_cast<int32_t>(pcm.size()), cfg, speech).empty(),
+              "loud audio outside every region is not embedded");
+    }
+
     if (failures == 0) {
         std::printf("diarize_windows_unit: OK\n");
     }

@@ -238,8 +238,9 @@ struct cli_args {
     // default (OFF). --diarize / --no-diarize set this.
     bool    diarize      = true;
     bool    diarize_set  = false;
-    int32_t num_speakers      = 0;
-    float   speaker_threshold = 0.0f;
+    int32_t     num_speakers      = 0;
+    float       speaker_threshold = 0.0f;
+    std::string speech_file;
 
     // Streaming demo: when > 0, the single-file path feeds the WAV
     // through transcribe_stream_begin/feed/finalize in fixed-size
@@ -316,6 +317,8 @@ void print_usage(const char * argv0) {
                  "                        without it the clustering estimates the count\n"
                  "  --speaker-threshold F (titanet) cosine distance at which two windows stop\n"
                  "                        being one speaker; ignored when --speakers is given\n"
+                 "  --speech FILE         (titanet) where the speech is: two milliseconds per\n"
+                 "                        line, from a VAD or a transcriber's word timings\n"
                  "  --raw-tokens          keep <|...|> control tokens in output text\n"
                  "  --stream-chunk-ms N   single-file: drive the streaming API by feeding\n"
                  "                        N-ms PCM slices; requires model to advertise\n"
@@ -591,6 +594,8 @@ bool parse_args(int argc, char ** argv, cli_args & out) {
             out.num_speakers = std::atoi(argv[++i]);
         } else if (a == "--speaker-threshold" && i + 1 < argc) {
             out.speaker_threshold = static_cast<float>(std::atof(argv[++i]));
+        } else if (a == "--speech" && i + 1 < argc) {
+            out.speech_file = argv[++i];
         } else if (a == "--diarize") {
             out.diarize     = true;
             out.diarize_set = true;
@@ -852,11 +857,32 @@ int main(int argc, char ** argv) {
         // architecture and cannot be asked for.
         struct transcribe_titanet_diarize_ext tnx;
         transcribe_titanet_diarize_ext_init(&tnx);
-        if ((args.num_speakers > 0 || args.speaker_threshold > 0.0f) &&
+        // Where the speech is, when something else already knows: two
+        // milliseconds per line, which is what a voice activity detector or a
+        // transcriber's word timings come out as. Loudness cannot tell a voice
+        // from a chair, and the difference shows up as an extra speaker.
+        std::vector<int64_t> speech;
+        if (!args.speech_file.empty()) {
+            std::ifstream in(args.speech_file);
+            int64_t       from = 0, to = 0;
+            while (in >> from >> to) {
+                speech.push_back(from);
+                speech.push_back(to);
+            }
+            if (speech.empty()) {
+                std::fprintf(stderr, "error: no regions in %s\n", args.speech_file.c_str());
+                return 2;
+            }
+        }
+        if ((args.num_speakers > 0 || args.speaker_threshold > 0.0f || !speech.empty()) &&
             transcribe_model_accepts_ext_kind(model, TRANSCRIBE_EXT_SLOT_RUN, TRANSCRIBE_EXT_KIND_TITANET_DIARIZE)) {
             tnx.num_speakers = args.num_speakers;
             tnx.threshold    = args.speaker_threshold;
-            rp.family        = &tnx.ext;
+            if (!speech.empty()) {
+                tnx.speech_ms = speech.data();
+                tnx.n_speech  = static_cast<int32_t>(speech.size() / 2);
+            }
+            rp.family = &tnx.ext;
         }
 
         // Whisper run extension. Allocated outside rp's scope so its

@@ -415,14 +415,18 @@ transcribe_status run(transcribe_session *          session,
     // the verification pair need, and it is what a caller gets by not asking
     // for diarization.
     if (params != nullptr && params->diarize == TRANSCRIBE_DIARIZE_MODE_ON) {
-        int32_t num_speakers = 0;
-        float   threshold    = 0.0f;
+        int32_t                                 num_speakers = 0;
+        float                                   threshold    = 0.0f;
+        std::vector<transcribe::diarize::Region> speech;
         if (params->family != nullptr) {
             const auto * ext = reinterpret_cast<const transcribe_titanet_diarize_ext *>(params->family);
             num_speakers     = ext->num_speakers;
             threshold        = ext->threshold;
+            for (int32_t i = 0; i < ext->n_speech; ++i) {
+                speech.push_back({ ext->speech_ms[2 * i], ext->speech_ms[2 * i + 1] });
+            }
         }
-        if (const transcribe_status st = diarize(pc, pm, pcm, n_samples, num_speakers, threshold);
+        if (const transcribe_status st = diarize(pc, pm, pcm, n_samples, num_speakers, threshold, speech);
             st != TRANSCRIBE_OK) {
             return st;
         }
@@ -551,6 +555,15 @@ transcribe_status run_validate(const transcribe_session * /*ctx*/, const transcr
     }
     const auto * ext = reinterpret_cast<const transcribe_titanet_diarize_ext *>(params->family);
     if (ext->num_speakers < 0 || ext->threshold < 0.0f || ext->threshold > 2.0f) {
+        return TRANSCRIBE_ERR_INVALID_ARG;
+    }
+    // A count with no array, or an array with no count, is a caller that has
+    // half-filled the struct; running on that would silently ignore the speech
+    // they meant to supply.
+    if ((ext->n_speech > 0) != (ext->speech_ms != nullptr)) {
+        return TRANSCRIBE_ERR_INVALID_ARG;
+    }
+    if (ext->n_speech < 0) {
         return TRANSCRIBE_ERR_INVALID_ARG;
     }
     return TRANSCRIBE_OK;

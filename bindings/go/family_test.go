@@ -7,6 +7,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/handy-computer/transcribe.cpp/bindings/go/internal/support"
 )
@@ -29,6 +30,7 @@ func TestExtensionKindsAreDistinct(t *testing.T) {
 	for name, k := range map[string]ExtKind{
 		"whisper run":             KindWhisperRun,
 		"sortformer stream":       KindSortformerStream,
+		"titanet diarize":         KindTitanetDiarize,
 		"parakeet stream":         KindParakeetStream,
 		"parakeet buffered":       KindParakeetBufferedStream,
 		"moonshine streaming":     KindMoonshineStreaming,
@@ -47,6 +49,7 @@ func TestExtensionKindsAreDistinct(t *testing.T) {
 func TestExtensionSlots(t *testing.T) {
 	var run []RunExtension = []RunExtension{
 		&WhisperRunOptions{}, &VoxtralRunOptions{}, &SortformerStreamOptions{},
+		&TitanetDiarizeOptions{},
 	}
 	var stream []StreamExtension = []StreamExtension{
 		&ParakeetStreamOptions{}, &ParakeetBufferedStreamOptions{},
@@ -277,5 +280,25 @@ func TestParakeetExtensions(t *testing.T) {
 	}
 	if text.Full == "" {
 		t.Error("empty transcript")
+	}
+}
+
+// The speech regions cross to C as a flat array of millisecond pairs. cgo
+// cannot be used from a test, so what is checked is the conversion, which is
+// where a mistake would be: a swapped pair or a unit that is not milliseconds
+// silently moves every window.
+func TestTitanetSpeechFlattens(t *testing.T) {
+	got := flatten([]Span{
+		{Start: 0, End: 1500 * time.Millisecond},
+		{Start: 2 * time.Second, End: 2500 * time.Millisecond},
+	})
+	want := []int64{0, 1500, 2000, 2500}
+	for i := range want {
+		if i >= len(got) || got[i] != want[i] {
+			t.Fatalf("flatten = %v, want %v", got, want)
+		}
+	}
+	if len(flatten(nil)) != 0 {
+		t.Error("flatten of nothing is not empty")
 	}
 }

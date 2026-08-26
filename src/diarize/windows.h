@@ -49,9 +49,23 @@ struct WindowConfig {
     float silence_floor = 0.05f;
 };
 
+// One stretch the caller says is speech, in milliseconds.
+struct Region {
+    int64_t t0_ms;
+    int64_t t1_ms;
+};
+
 // The windows worth embedding: uniform windows over the recording, minus the
 // ones with no speech in them.
-std::vector<Window> speech_windows(const float * pcm, int32_t n_samples, const WindowConfig & config);
+//
+// With regions, a window is kept when at least half of it falls inside one,
+// and loudness is not consulted: whoever supplied the regions knows more about
+// where the speech is than an energy threshold does. Without them, the crude
+// gate above is all there is.
+std::vector<Window> speech_windows(const float *              pcm,
+                                   int32_t                    n_samples,
+                                   const WindowConfig &       config,
+                                   const std::vector<Region> & regions = {});
 
 // Turn one label per window back into rows. Consecutive windows by the same
 // speaker merge, and a gap in the windows -- silence, or the end of the
