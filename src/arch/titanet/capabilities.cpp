@@ -20,6 +20,10 @@ void apply_family_invariants(transcribe_model & model) {
     caps.supports_translate = false;
     caps.max_timestamp_kind = TRANSCRIBE_TIMESTAMPS_NONE;
 
+    // The rows come from clustering the embeddings, so they are as good as the
+    // windowing in front of them; see src/arch/titanet/diarize.cpp.
+    transcribe::set_feature(&model, TRANSCRIBE_FEATURE_DIARIZATION, true);
+
     // Abort callback honored at the top of each run.
     transcribe::set_feature(&model, TRANSCRIBE_FEATURE_CANCELLATION, true);
 }

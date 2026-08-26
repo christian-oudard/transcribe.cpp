@@ -8,6 +8,7 @@
 #include "transcribe.h"
 #include "transcribe/parakeet.h"
 #include "transcribe/voxtral_realtime.h"
+#include "transcribe/titanet.h"
 #include "transcribe/whisper.h"
 #include "wav.h"
 
@@ -235,8 +236,10 @@ struct cli_args {
 
     // Speaker diarization toggle (moss / granite-plus). Unset = library
     // default (OFF). --diarize / --no-diarize set this.
-    bool diarize     = true;
-    bool diarize_set = false;
+    bool    diarize      = true;
+    bool    diarize_set  = false;
+    int32_t num_speakers      = 0;
+    float   speaker_threshold = 0.0f;
 
     // Streaming demo: when > 0, the single-file path feeds the WAV
     // through transcribe_stream_begin/feed/finalize in fixed-size
@@ -309,6 +312,10 @@ void print_usage(const char * argv0) {
                  "  --diarize             (moss/granite-plus) speaker attribution: segments carry\n"
                  "                        speaker ids; granite-plus requests its speaker task\n"
                  "  --no-diarize          disable speaker attribution (the library default)\n"
+                 "  --speakers N          (titanet) how many speakers the recording has;\n"
+                 "                        without it the clustering estimates the count\n"
+                 "  --speaker-threshold F (titanet) cosine distance at which two windows stop\n"
+                 "                        being one speaker; ignored when --speakers is given\n"
                  "  --raw-tokens          keep <|...|> control tokens in output text\n"
                  "  --stream-chunk-ms N   single-file: drive the streaming API by feeding\n"
                  "                        N-ms PCM slices; requires model to advertise\n"
@@ -580,6 +587,10 @@ bool parse_args(int argc, char ** argv, cli_args & out) {
         } else if (a == "--no-pnc") {
             out.canary_pnc     = false;
             out.canary_pnc_set = true;
+        } else if (a == "--speakers" && i + 1 < argc) {
+            out.num_speakers = std::atoi(argv[++i]);
+        } else if (a == "--speaker-threshold" && i + 1 < argc) {
+            out.speaker_threshold = static_cast<float>(std::atof(argv[++i]));
         } else if (a == "--diarize") {
             out.diarize     = true;
             out.diarize_set = true;
@@ -834,6 +845,18 @@ int main(int argc, char ** argv) {
         }
         if (args.diarize_set) {
             rp.diarize = args.diarize ? TRANSCRIBE_DIARIZE_MODE_ON : TRANSCRIBE_DIARIZE_MODE_OFF;
+        }
+
+        // Speaker count for a clustering diarizer. Only models that cluster
+        // take one; for the rest the number of speakers is a property of the
+        // architecture and cannot be asked for.
+        struct transcribe_titanet_diarize_ext tnx;
+        transcribe_titanet_diarize_ext_init(&tnx);
+        if ((args.num_speakers > 0 || args.speaker_threshold > 0.0f) &&
+            transcribe_model_accepts_ext_kind(model, TRANSCRIBE_EXT_SLOT_RUN, TRANSCRIBE_EXT_KIND_TITANET_DIARIZE)) {
+            tnx.num_speakers = args.num_speakers;
+            tnx.threshold    = args.speaker_threshold;
+            rp.family        = &tnx.ext;
         }
 
         // Whisper run extension. Allocated outside rp's scope so its

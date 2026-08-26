@@ -1,0 +1,26 @@
+repo:    https://github.com/cdalitz/hclust-cpp
+branch:  master
+sha:     d48fff6bba1199d80422cd37f5b635107a5a0c92
+
+A vendored snapshot of Christoph Dalitz's standalone C++ interface to Daniel
+Müllner's fastcluster, copied verbatim (fastcluster.h, fastcluster.cpp,
+fastcluster_dm.cpp, fastcluster_R_dm.cpp) plus upstream's LICENSE. Do not edit
+these by hand -- re-vendor and update this file.
+
+Why vendored: speaker diarization ends in a clustering step, grouping the
+embedding of every window of speech by whose voice it is. That is agglomerative
+hierarchical clustering, which is a solved problem with a subtle
+implementation: the naive form is O(n^3) and this recording is thousands of
+windows. Müllner's is the fastest published implementation and the one behind
+scipy's linkage, so writing our own would be slower, longer and less tested.
+
+What we use, in src/diarize/cluster.cpp:
+  hclust_fast    average-linkage over a condensed cosine-distance matrix
+  cutree_k       cut at a known speaker count
+  cutree_cdist   cut at a distance, for when the count is not known
+
+fastcluster_dm.cpp and fastcluster_R_dm.cpp are #included by fastcluster.cpp
+rather than compiled separately; that is upstream's arrangement, not ours.
+
+License: BSD 2-clause (Daniel Müllner 2011, Christoph Dalitz 2018), text in the
+LICENSE file in this directory.

@@ -48,6 +48,7 @@ parameter; existing kinds keep their slot for life.
 | `0x4E524857`   | `WHRN` | `RUN`    | `TRANSCRIBE_EXT_KIND_WHISPER_RUN`               | whisper      | `include/transcribe/whisper.h`  |
 | `0x54535256`   | `VRST` | `STREAM` | `TRANSCRIBE_EXT_KIND_VOXTRAL_REALTIME_STREAM`   | voxtral_realtime | `include/transcribe/voxtral_realtime.h` |
 | `0x54534653`   | `SFST` | `RUN`    | `TRANSCRIBE_EXT_KIND_SORTFORMER_STREAM`         | sortformer   | `include/transcribe/sortformer.h` |
+| `0x5A444E54`   | `TNDZ` | `RUN`    | `TRANSCRIBE_EXT_KIND_TITANET_DIARIZE`           | titanet      | `include/transcribe/titanet.h` |
 | `0x4E525856`   | `VXRN` | `RUN`    | `TRANSCRIBE_EXT_KIND_VOXTRAL_RUN`               | voxtral      | `include/transcribe/voxtral.h`  |
 
 Empty rows reserved for future allocations:

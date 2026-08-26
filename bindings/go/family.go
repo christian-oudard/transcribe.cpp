@@ -42,6 +42,7 @@ const (
 	KindWhisperRun             ExtKind = C.TRANSCRIBE_EXT_KIND_WHISPER_RUN
 	KindVoxtralRun             ExtKind = C.TRANSCRIBE_EXT_KIND_VOXTRAL_RUN
 	KindSortformerStream       ExtKind = C.TRANSCRIBE_EXT_KIND_SORTFORMER_STREAM
+	KindTitanetDiarize         ExtKind = C.TRANSCRIBE_EXT_KIND_TITANET_DIARIZE
 	KindParakeetStream         ExtKind = C.TRANSCRIBE_EXT_KIND_PARAKEET_STREAM
 	KindParakeetBufferedStream ExtKind = C.TRANSCRIBE_EXT_KIND_PARAKEET_BUFFERED_STREAM
 	KindMoonshineStreaming     ExtKind = C.TRANSCRIBE_EXT_KIND_MOONSHINE_STREAMING_STREAM
@@ -255,6 +256,38 @@ func (o *SortformerStreamOptions) runExt() (*C.struct_transcribe_ext, func()) {
 	C.transcribe_sortformer_stream_ext_init(e)
 	if o.Preset != nil {
 		e.preset = C.transcribe_sortformer_preset(*o.Preset)
+	}
+	return (*C.struct_transcribe_ext)(mem), free
+}
+
+// TitanetDiarizeOptions says how many speakers a recording has.
+//
+// TitaNet diarizes by clustering, so unlike every fixed-cap diarizer here the
+// number of speakers is an input rather than an architectural constant. Left
+// unset it is estimated from the audio, which is a real estimate and not a
+// guarantee: the eigengap it comes from cannot tell one person recorded two
+// ways from two people. A caller who knows the count should give it.
+type TitanetDiarizeOptions struct {
+	// Speakers is the exact number, when it is known.
+	Speakers *int
+	// Threshold is the cosine distance at which two windows stop being the
+	// same person, used only when Speakers is unset and the estimate is
+	// switched off by giving one. Roughly 0.5 splits a speaker into several
+	// and 0.9 merges several into one.
+	Threshold *float32
+}
+
+func (o *TitanetDiarizeOptions) Kind() ExtKind { return KindTitanetDiarize }
+
+func (o *TitanetDiarizeOptions) runExt() (*C.struct_transcribe_ext, func()) {
+	mem, free := alloc(unsafe.Sizeof(C.struct_transcribe_titanet_diarize_ext{}))
+	e := (*C.struct_transcribe_titanet_diarize_ext)(mem)
+	C.transcribe_titanet_diarize_ext_init(e)
+	if o.Speakers != nil {
+		e.num_speakers = C.int32_t(*o.Speakers)
+	}
+	if o.Threshold != nil {
+		e.threshold = C.float(*o.Threshold)
 	}
 	return (*C.struct_transcribe_ext)(mem), free
 }

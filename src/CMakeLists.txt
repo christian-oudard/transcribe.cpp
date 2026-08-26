@@ -65,6 +65,7 @@ add_library(transcribe
     arch/sortformer/capabilities.cpp
     arch/sortformer/weights.cpp
     arch/titanet/model.cpp
+    arch/titanet/diarize.cpp
     arch/titanet/capabilities.cpp
     arch/titanet/weights.cpp
     arch/voxtral/model.cpp
@@ -132,6 +133,13 @@ add_library(transcribe
     arch/medasr/capabilities.cpp
     arch/medasr/weights.cpp
     arch/medasr/encoder.cpp
+    # Speaker clustering: the last stage of diarization, which decides which
+    # windows of speech are the same person. Vendored fastcluster does the
+    # linkage; diarize/cluster.cpp is the cosine metric and the cut policy.
+    diarize/cluster.cpp
+    diarize/count.cpp
+    diarize/windows.cpp
+    third_party/fastcluster/fastcluster.cpp
     # Vendored miniz (src/third_party/miniz, see its UPSTREAM file): the
     # deflate compressor behind Whisper's compression-ratio heuristic. Compiled
     # into libtranscribe itself so the static/shared artifact is self-contained

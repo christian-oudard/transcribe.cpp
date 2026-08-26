@@ -28,6 +28,8 @@
 #include <vector>
 
 struct ggml_context;
+struct ggml_cgraph;
+struct ggml_tensor;
 struct ggml_backend_buffer;
 struct ggml_backend_sched;
 typedef struct ggml_backend_buffer * ggml_backend_buffer_t;
@@ -71,6 +73,26 @@ struct TitanetSession final : public transcribe_session {
 
     ~TitanetSession() override;
 };
+
+// One forward pass over one clip, built for a fixed number of mel frames.
+// Diarization runs the same shape over every window of a recording, so the
+// graph is built once and computed many times.
+struct EmbedGraph {
+    ggml_cgraph *              graph    = nullptr;
+    ggml_tensor *              mel_in   = nullptr;
+    ggml_tensor *              uniform  = nullptr;  // per-frame weights, all equal
+    ggml_tensor *              pool_out = nullptr;
+    ggml_tensor *              emb      = nullptr;
+    std::vector<ggml_tensor *> blocks;              // per-block outputs, for parity dumps
+};
+
+EmbedGraph build_embed_graph(ggml_context * ctx, const TitanetModel & m, int T, int n_mels);
+
+// Window the recording, embed each window, cluster the embeddings, and put
+// the resulting who-spoke-when rows on the session. This is the whole
+// diarization path; see src/diarize/.
+transcribe_status diarize(TitanetSession * pc, TitanetModel * pm, const float * pcm, int n_samples,
+                          int32_t num_speakers, float threshold);
 
 extern const Arch arch;
 

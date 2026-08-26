@@ -7,6 +7,7 @@
 // tensors are transposed on the way out.
 
 #include "titanet.h"
+#include "transcribe/titanet.h"
 
 #include "conformer/conformer.h"
 #include "ggml.h"
@@ -227,6 +228,58 @@ Stats weighted_stats(ggml_context * ctx, ggml_tensor * x, ggml_tensor * w) {
 }  // namespace
 
 // ---------------------------------------------------------------------------
+// Graph
+// ---------------------------------------------------------------------------
+
+// One forward pass over a clip of T mel frames. Built once and computed many
+// times: diarization runs this same shape over every window of a recording,
+// where rebuilding the graph per window would cost more than the graph.
+EmbedGraph build_embed_graph(ggml_context * ctx, const TitanetModel & m, int T, int n_mels) {
+    EmbedGraph g;
+    g.graph = ggml_new_graph_custom(ctx, /*size=*/8192, /*grads=*/false);
+
+    g.mel_in = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, T, n_mels);
+    ggml_set_input(g.mel_in);
+
+    const TitanetHParams & hp = m.hparams;
+    ggml_tensor *          x  = g.mel_in;
+
+        for (int b = 0; b < hp.enc_n_blocks; ++b) {
+        x = block(ctx, m.weights.blocks[static_cast<size_t>(b)], x, hp.kernel[static_cast<size_t>(b)]);
+        g.blocks.push_back(x);
+    }
+    ggml_tensor * enc_out = x;
+
+    // Attentive statistics pooling. The attention input is the encoder output
+    // beside its own clip mean and deviation, so the weights a channel gets
+    // depend on how that channel behaved over the whole clip.
+    const int64_t c        = enc_out->ne[1];
+    g.uniform = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, T, 1);
+    ggml_set_input(g.uniform);
+    Stats         clip     = weighted_stats(ctx, enc_out, g.uniform);
+    ggml_tensor * attn_in  = ggml_concat(ctx, enc_out, ggml_repeat(ctx, clip.mean, enc_out), 1);
+    attn_in                = ggml_concat(ctx, attn_in, ggml_repeat(ctx, clip.dev, enc_out), 1);
+
+    ggml_tensor * a = pointwise(ctx, m.weights.pool_attn0_w, attn_in, m.weights.pool_attn0_b);
+    a               = ggml_relu(ctx, a);
+    a               = conf::fused_batch_norm(ctx, a, m.weights.pool_bn_scale, m.weights.pool_bn_shift);
+    a               = ggml_tanh(ctx, a);
+    a               = pointwise(ctx, m.weights.pool_attn1_w, a, m.weights.pool_attn1_b);
+    // Softmax over time, one distribution per channel; ne0 is time.
+    ggml_tensor * alpha = ggml_soft_max(ctx, a);
+
+    Stats         pooled   = weighted_stats(ctx, enc_out, alpha);
+    g.pool_out = ggml_reshape_1d(ctx, ggml_concat(ctx, pooled.mean, pooled.dev, 1), 2 * c);
+
+    ggml_tensor * e = ggml_add(ctx, ggml_mul(ctx, g.pool_out, m.weights.emb_bn_scale), m.weights.emb_bn_shift);
+    e               = ggml_mul_mat(ctx, ggml_reshape_2d(ctx, m.weights.emb_proj_w, 2 * c, hp.embedding_size), e);
+    g.emb = ggml_add(ctx, e, m.weights.emb_proj_b);
+
+    ggml_build_forward_expand(g.graph, g.emb);
+    return g;
+}
+
+// ---------------------------------------------------------------------------
 // Load
 // ---------------------------------------------------------------------------
 
@@ -347,7 +400,7 @@ ggml_tensor * time_major(ggml_context * ctx, ggml_tensor * x) {
 transcribe_status run(transcribe_session *          session,
                       const float *                 pcm,
                       int                           n_samples,
-                      const transcribe_run_params * /*params*/) {
+                      const transcribe_run_params * params) {
     auto * pc = static_cast<TitanetSession *>(session);
     auto * pm = static_cast<TitanetModel *>(session->model);
 
@@ -357,6 +410,26 @@ transcribe_status run(transcribe_session *          session,
     pc->clear_result();
     pc->embedding.clear();
     transcribe::debug::init();
+
+    // Diarizing is the product. Embedding one clip is what the parity gate and
+    // the verification pair need, and it is what a caller gets by not asking
+    // for diarization.
+    if (params != nullptr && params->diarize == TRANSCRIBE_DIARIZE_MODE_ON) {
+        int32_t num_speakers = 0;
+        float   threshold    = 0.0f;
+        if (params->family != nullptr) {
+            const auto * ext = reinterpret_cast<const transcribe_titanet_diarize_ext *>(params->family);
+            num_speakers     = ext->num_speakers;
+            threshold        = ext->threshold;
+        }
+        if (const transcribe_status st = diarize(pc, pm, pcm, n_samples, num_speakers, threshold);
+            st != TRANSCRIBE_OK) {
+            return st;
+        }
+        pc->result_kind = TRANSCRIBE_TIMESTAMPS_NONE;
+        pc->has_result  = true;
+        return TRANSCRIBE_OK;
+    }
 
     if (!pm->mel.has_value()) {
         return TRANSCRIBE_ERR_GGUF;
@@ -384,48 +457,15 @@ transcribe_status run(transcribe_session *          session,
     if (pc->compute_ctx == nullptr) {
         return TRANSCRIBE_ERR_GGUF;
     }
-    ggml_context * ctx   = pc->compute_ctx;
-    ggml_cgraph *  graph = ggml_new_graph_custom(ctx, /*size=*/8192, /*grads=*/false);
+    ggml_context * ctx = pc->compute_ctx;
+    EmbedGraph     g   = build_embed_graph(ctx, *pm, T, mel_n_mels);
 
-    ggml_tensor * mel_in = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, T, mel_n_mels);
-    ggml_set_input(mel_in);
-
-    const TitanetHParams & hp = pm->hparams;
-    ggml_tensor *          x  = mel_in;
-
-    std::vector<ggml_tensor *> block_out;
-    for (int b = 0; b < hp.enc_n_blocks; ++b) {
-        x = block(ctx, pm->weights.blocks[static_cast<size_t>(b)], x, hp.kernel[static_cast<size_t>(b)]);
-        block_out.push_back(x);
-    }
-    ggml_tensor * enc_out = x;
-
-    // Attentive statistics pooling. The attention input is the encoder output
-    // beside its own clip mean and deviation, so the weights a channel gets
-    // depend on how that channel behaved over the whole clip.
-    const int64_t c        = enc_out->ne[1];
-    ggml_tensor * uniform  = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, T, 1);
-    ggml_set_input(uniform);
-    Stats         clip     = weighted_stats(ctx, enc_out, uniform);
-    ggml_tensor * attn_in  = ggml_concat(ctx, enc_out, ggml_repeat(ctx, clip.mean, enc_out), 1);
-    attn_in                = ggml_concat(ctx, attn_in, ggml_repeat(ctx, clip.dev, enc_out), 1);
-
-    ggml_tensor * a = pointwise(ctx, pm->weights.pool_attn0_w, attn_in, pm->weights.pool_attn0_b);
-    a               = ggml_relu(ctx, a);
-    a               = conf::fused_batch_norm(ctx, a, pm->weights.pool_bn_scale, pm->weights.pool_bn_shift);
-    a               = ggml_tanh(ctx, a);
-    a               = pointwise(ctx, pm->weights.pool_attn1_w, a, pm->weights.pool_attn1_b);
-    // Softmax over time, one distribution per channel; ne0 is time.
-    ggml_tensor * alpha = ggml_soft_max(ctx, a);
-
-    Stats         pooled   = weighted_stats(ctx, enc_out, alpha);
-    ggml_tensor * pool_out = ggml_reshape_1d(ctx, ggml_concat(ctx, pooled.mean, pooled.dev, 1), 2 * c);
-
-    ggml_tensor * e = ggml_add(ctx, ggml_mul(ctx, pool_out, pm->weights.emb_bn_scale), pm->weights.emb_bn_shift);
-    e               = ggml_mul_mat(ctx, ggml_reshape_2d(ctx, pm->weights.emb_proj_w, 2 * c, hp.embedding_size), e);
-    ggml_tensor * emb = ggml_add(ctx, e, pm->weights.emb_proj_b);
-
-    ggml_build_forward_expand(graph, emb);
+    ggml_cgraph *              graph     = g.graph;
+    ggml_tensor *              mel_in    = g.mel_in;
+    ggml_tensor *              uniform   = g.uniform;
+    ggml_tensor *              pool_out  = g.pool_out;
+    ggml_tensor *              emb       = g.emb;
+    std::vector<ggml_tensor *> block_out = g.blocks;
 
     std::vector<ggml_tensor *> dumps;
     if (transcribe::debug::enabled()) {
@@ -477,11 +517,42 @@ transcribe_status run(transcribe_session *          session,
         transcribe::debug::dump_tensor("emb.out", emb, "embedding");
     }
 
-    pc->embedding.resize(static_cast<size_t>(hp.embedding_size));
+    pc->embedding.resize(static_cast<size_t>(pm->hparams.embedding_size));
     ggml_backend_tensor_get(emb, pc->embedding.data(), 0, pc->embedding.size() * sizeof(float));
 
     pc->result_kind = TRANSCRIBE_TIMESTAMPS_NONE;
     pc->has_result  = true;
+    return TRANSCRIBE_OK;
+}
+
+}  // namespace
+
+namespace {
+
+// The count-or-threshold extension is the only surface here, and only on the
+// run slot: there is no push-audio entry point for a model that has to see a
+// whole recording before it can cluster it.
+bool accepts_ext_kind(const transcribe_model * model, transcribe_ext_slot slot, uint32_t kind) {
+    if (model == nullptr || slot != TRANSCRIBE_EXT_SLOT_RUN) {
+        return false;
+    }
+    return kind == TRANSCRIBE_EXT_KIND_TITANET_DIARIZE;
+}
+
+// Rejected before the previous result is cleared, so a typo costs nothing.
+transcribe_status run_validate(const transcribe_session * /*ctx*/, const transcribe_run_params * params) {
+    if (params == nullptr || params->family == nullptr) {
+        return TRANSCRIBE_OK;
+    }
+    if (const transcribe_status st = transcribe_ext_check(params->family, TRANSCRIBE_EXT_KIND_TITANET_DIARIZE,
+                                                          sizeof(struct transcribe_titanet_diarize_ext));
+        st != TRANSCRIBE_OK) {
+        return st;
+    }
+    const auto * ext = reinterpret_cast<const transcribe_titanet_diarize_ext *>(params->family);
+    if (ext->num_speakers < 0 || ext->threshold < 0.0f || ext->threshold > 2.0f) {
+        return TRANSCRIBE_ERR_INVALID_ARG;
+    }
     return TRANSCRIBE_OK;
 }
 
@@ -498,8 +569,19 @@ extern const Arch arch = {
     /* .stream_feed      = */ nullptr,
     /* .stream_finalize  = */ nullptr,
     /* .stream_reset     = */ nullptr,
-    /* .accepts_ext_kind = */ nullptr,
-    /* .run_validate     = */ nullptr,
+    /* .accepts_ext_kind = */ accepts_ext_kind,
+    /* .run_validate     = */ run_validate,
 };
+
+// Public extension init (global scope, C linkage), kept here so
+// transcribe.cpp stays family-agnostic.
+extern "C" void transcribe_titanet_diarize_ext_init(struct transcribe_titanet_diarize_ext * p) {
+    if (p == nullptr) {
+        return;
+    }
+    std::memset(p, 0, sizeof(*p));
+    p->ext.size = sizeof(*p);
+    p->ext.kind = TRANSCRIBE_EXT_KIND_TITANET_DIARIZE;
+}
 
 }  // namespace transcribe::titanet

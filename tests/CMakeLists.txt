@@ -187,6 +187,33 @@ transcribe_apply_warnings(transcribe_batch_mask_unit)
 add_test(NAME transcribe_batch_mask_unit COMMAND transcribe_batch_mask_unit)
 
 # -----------------------------------------------------------------------------
+# Speaker-embedding clustering (pure host, no model)
+
+add_executable(transcribe_diarize_cluster_unit
+    diarize_cluster_unit.cpp)
+
+target_link_libraries(transcribe_diarize_cluster_unit PRIVATE transcribe ggml)
+
+target_include_directories(transcribe_diarize_cluster_unit PRIVATE
+    ${CMAKE_SOURCE_DIR}/src)
+
+transcribe_apply_warnings(transcribe_diarize_cluster_unit)
+
+add_test(NAME transcribe_diarize_cluster_unit COMMAND transcribe_diarize_cluster_unit)
+
+add_executable(transcribe_diarize_windows_unit
+    diarize_windows_unit.cpp)
+
+target_link_libraries(transcribe_diarize_windows_unit PRIVATE transcribe ggml)
+
+target_include_directories(transcribe_diarize_windows_unit PRIVATE
+    ${CMAKE_SOURCE_DIR}/src)
+
+transcribe_apply_warnings(transcribe_diarize_windows_unit)
+
+add_test(NAME transcribe_diarize_windows_unit COMMAND transcribe_diarize_windows_unit)
+
+# -----------------------------------------------------------------------------
 # Chunked-prefill causal mask geometry (pure host, no model)
 
 add_executable(transcribe_prefill_chunk_mask_unit
