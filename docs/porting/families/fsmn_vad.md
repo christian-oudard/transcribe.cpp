@@ -53,6 +53,20 @@ for eight gigabytes; the model ran on eighteen-minute meetings and died on a
 109-minute workshop. Chunked at five minutes, the same recording takes 12
 seconds and matches the reference to the digit it matched before.
 
+## Two files, one checkpoint
+
+`FunAudioLLM/fsmn-vad-GGUF` was published before this port and keeps FunASR's
+own tensor names, prefixes its hparams `vad.` rather than `stt.fsmn_vad.`, and
+stores the memory kernel as `[C, lorder]` where the converter here writes
+`[lorder, C]`. Its weights are bit-identical to the converter's output, so the
+loader reads both spellings and the graph turns the kernel round when it has
+to.
+
+What that file does not carry is the frontend's sampling and window, or which
+of the 248 outputs is silence. There is one published checkpoint of this model
+and those are its values, so they are defaults rather than requirements; a
+file that states them is believed instead.
+
 ## Commands
 
 Convert:

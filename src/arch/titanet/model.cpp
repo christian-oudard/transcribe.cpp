@@ -36,8 +36,8 @@ namespace conf = transcribe::conformer;
 // costs nothing in shape and everything in numbers: block 1's BatchNorm came
 // back at cosine 0.54 against the reference, and the encoder diverged from
 // there.
-static constexpr float kBlockBnEps = 1e-3f;
-static constexpr float kBnEps      = 1e-5f;
+// Defaulted in TitanetHParams; the published GGUF states both, and reading
+// them is how a file gets to say what it is rather than being assumed.
 
 // AttentivePoolLayer's variance floor. Guards the square root, and only ever
 // binds on a channel that is constant across the clip.
@@ -88,24 +88,24 @@ struct BnSlot {
     float          eps;
 };
 
-void collect_bn_slots(TitanetWeights & w, std::vector<BnSlot> & out) {
+void collect_bn_slots(TitanetWeights & w, std::vector<BnSlot> & out, float block_eps, float other_eps) {
     for (TitanetBlock & blk : w.blocks) {
         for (TitanetRepeat & rep : blk.reps) {
-            out.push_back({ rep.bn_w, rep.bn_b, rep.bn_rm, rep.bn_rv, &rep.scale, &rep.shift, kBlockBnEps });
+            out.push_back({ rep.bn_w, rep.bn_b, rep.bn_rm, rep.bn_rv, &rep.scale, &rep.shift, block_eps });
         }
         if (blk.res_pw != nullptr) {
             out.push_back(
                 { blk.res_bn_w, blk.res_bn_b, blk.res_bn_rm, blk.res_bn_rv, &blk.res_scale, &blk.res_shift,
-                  kBlockBnEps });
+                  block_eps });
         }
     }
-    out.push_back({ w.pool_bn_w, w.pool_bn_b, w.pool_bn_rm, w.pool_bn_rv, &w.pool_bn_scale, &w.pool_bn_shift, kBnEps });
-    out.push_back({ w.emb_bn_w, w.emb_bn_b, w.emb_bn_rm, w.emb_bn_rv, &w.emb_bn_scale, &w.emb_bn_shift, kBnEps });
+    out.push_back({ w.pool_bn_w, w.pool_bn_b, w.pool_bn_rm, w.pool_bn_rv, &w.pool_bn_scale, &w.pool_bn_shift, other_eps });
+    out.push_back({ w.emb_bn_w, w.emb_bn_b, w.emb_bn_rm, w.emb_bn_rv, &w.emb_bn_scale, &w.emb_bn_shift, other_eps });
 }
 
 transcribe_status fuse_batch_norms(TitanetModel & m) {
     std::vector<BnSlot> slots;
-    collect_bn_slots(m.weights, slots);
+    collect_bn_slots(m.weights, slots, m.hparams.bn_eps_block, m.hparams.bn_eps_other);
 
     const size_t     ctx_size = slots.size() * 2 * ggml_tensor_overhead() + 256;
     ggml_init_params params   = { ctx_size, nullptr, /*no_alloc=*/true };
@@ -152,6 +152,13 @@ transcribe_status fuse_batch_norms(TitanetModel & m) {
 
 // Pointwise (kernel 1) convolution, which is a per-frame linear map.
 ggml_tensor * pointwise(ggml_context * ctx, ggml_tensor * w, ggml_tensor * x, ggml_tensor * bias = nullptr) {
+    // A pointwise convolution is a matrix, and the two published files
+    // disagree about whether to store it as one: [1, in, out] here, [in, out]
+    // there. The elements are in the same order, and the convolution below
+    // wants the kernel width fastest.
+    if (w->ne[2] == 1) {
+        w = ggml_reshape_3d(ctx, w, 1, w->ne[0], w->ne[1]);
+    }
     ggml_tensor * y = conf::conv_1d_f32(ctx, w, x, /*stride=*/1, /*padding=*/0, /*dilation=*/1);
     if (bias != nullptr) {
         y = ggml_add(ctx, y, ggml_reshape_2d(ctx, bias, 1, bias->ne[0]));
@@ -192,7 +199,13 @@ ggml_tensor * block(ggml_context * ctx, const TitanetBlock & blk, ggml_tensor * 
 
     for (size_t r = 0; r < blk.reps.size(); ++r) {
         const TitanetRepeat & rep = blk.reps[r];
-        h                         = conf::conv_1d_dw_f32(ctx, rep.dw, h, /*s=*/1, /*p=*/pad, /*d=*/1);
+        ggml_tensor * dw = rep.dw;
+        if (dw->ne[2] == 1) {
+            // [k, C] there against [k, 1, C] here, which for the epilog block
+            // is a kernel of width one.
+            dw = ggml_reshape_3d(ctx, dw, dw->ne[0], 1, dw->ne[1]);
+        }
+        h                         = conf::conv_1d_dw_f32(ctx, dw, h, /*s=*/1, /*p=*/pad, /*d=*/1);
         h                         = pointwise(ctx, rep.pw, h);
         h                         = conf::fused_batch_norm(ctx, h, rep.scale, rep.shift);
         if (r + 1 < blk.reps.size()) {

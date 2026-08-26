@@ -28,6 +28,8 @@ C/C++ speech-to-text inference library. Runs diverse STT model families via [GGU
 | MedASR | `medasr` (Conformer + CTC, English medical-dictation, gated) | [docs/models/medasr.md](docs/models/medasr.md) |
 | MOSS Transcribe-Diarize | `moss-transcribe-diarize` (audio-LLM; English + Chinese ASR with inline speaker diarization) | [docs/models/moss-transcribe-diarize.md](docs/models/moss-transcribe-diarize.md) |
 | Sortformer | `diar_streaming_sortformer_4spk-v2.1` (streaming speaker diarizer, up to 4 speakers; no transcription) | [docs/models/diar_streaming_sortformer_4spk-v2.1.md](docs/models/diar_streaming_sortformer_4spk-v2.1.md) |
+| TitaNet | `speakerverification_en_titanet_large` (speaker embeddings; diarizes by clustering, no speaker cap, no transcription) | [docs/models/speakerverification_en_titanet_large.md](docs/models/speakerverification_en_titanet_large.md) |
+| FSMN VAD | `fsmn-vad` (per-frame speech detection; no transcription, no speaker identity) | [docs/models/fsmn-vad.md](docs/models/fsmn-vad.md) |
 
 Per-variant model cards live under [`docs/models/`](docs/models/).
 

@@ -43,6 +43,25 @@ masked the final frame of every clip, which is right for a family whose
 frame in eleven hundred moved the whole embedding, because the pooling takes
 its statistics across the frames.
 
+## Two files, one checkpoint
+
+`cstr/titanet-large-GGUF` was published before this port. It describes the
+model in its own vocabulary (`titanet.emb_dim`, `titanet.channels`,
+`titanet.block_repeats`), carries no frontend block at all -- it bakes the mel
+filterbank and the window in as tensors instead -- and stores pointwise
+convolutions as plain matrices, `[in, out]` where the converter here writes
+`[1, in, out]`.
+
+None of that is information this tree needs and cannot get. Every stride and
+dilation in TitaNet is 1, the activation is ReLU, the pooling is attentive
+statistics, and the frontend is NeMo's standard 80-mel preprocessor; which
+blocks carry a residual is read off the tensors rather than assumed, since a
+block with a skip path has the convolution for it. The shape check ignores
+axes of extent one, and the graph reshapes what it is handed.
+
+What the published file has that this tree did not is both BatchNorm
+epsilons, stated rather than hard-coded.
+
 ## Commands
 
 Convert (needs the NeMo reference env):

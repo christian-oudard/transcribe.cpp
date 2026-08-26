@@ -93,6 +93,13 @@ ggml_tensor * affine(ggml_context * ctx, ggml_tensor * w, ggml_tensor * x, ggml_
 // audio after it -- which is what makes this usable on a stream and what makes
 // a file and a stream agree.
 ggml_tensor * memory(ggml_context * ctx, ggml_tensor * weight, ggml_tensor * x, int lorder) {
+    // The two published files disagree about which axis of the kernel is
+    // time. The convolution below wants time fastest, so a file that stores
+    // [C, lorder] is turned round here: four kernels of 2560 floats, once per
+    // graph build.
+    if (weight->ne[0] != lorder) {
+        weight = ggml_cont(ctx, ggml_transpose(ctx, weight));
+    }
     // [C, T] -> [T, C] for the convolution, which runs over the fastest axis.
     ggml_tensor * time_major = ggml_cont(ctx, ggml_permute(ctx, x, 1, 0, 2, 3));
     ggml_tensor * kernel     = ggml_reshape_3d(ctx, weight, weight->ne[0], 1, weight->ne[1]);

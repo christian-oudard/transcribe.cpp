@@ -43,6 +43,12 @@ struct TitanetHParams {
     std::string enc_activation;  // "relu"
     std::string pooling;         // "attention"
 
+    // BatchNorm epsilon, which is two numbers rather than one: NeMo's jasper
+    // blocks build theirs with 1e-3 where everything else takes PyTorch's
+    // 1e-5 default. These are the defaults; a file that states them wins.
+    float bn_eps_block = 1e-3f;
+    float bn_eps_other = 1e-5f;
+
     // Frontend (mel feature extractor).
     int32_t     fe_num_mels    = 0;
     int32_t     fe_sample_rate = 0;
