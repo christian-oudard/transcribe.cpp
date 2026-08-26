@@ -79,7 +79,7 @@ struct transcribe_titanet_diarize_ext {
 
 /* Stamps the header (size + kind) and clears both fields to their
  * defaults. Call before setting any field. */
-void transcribe_titanet_diarize_ext_init(struct transcribe_titanet_diarize_ext * p);
+TRANSCRIBE_API void transcribe_titanet_diarize_ext_init(struct transcribe_titanet_diarize_ext * p);
 
 #ifdef __cplusplus
 }
