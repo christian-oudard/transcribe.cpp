@@ -223,6 +223,15 @@ jobs:
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
       - name: Build
         run: cmake --build build-dl -j
+      - name: Every public function is exported
+        # The link smoke below drives transcribe_init_backends() and nothing
+        # else, so a public function that is declared and not exported passes
+        # it. A static build never notices either -- the archive resolves a
+        # hidden symbol -- which leaves a downstream project's undefined
+        # reference as the first report. This is the check that does notice.
+        run: |
+          python3 scripts/ci/check_exports.py \
+            --lib build-dl/src/libtranscribe.so --include include
       - name: Install + external-consumer link smoke (shared/DL posture)
         run: |
           cmake --install build-dl --prefix "$RUNNER_TEMP/staging-install" > /dev/null

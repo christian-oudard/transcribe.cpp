@@ -599,9 +599,15 @@ extern const Arch arch = {
     /* .run_validate     = */ run_validate,
 };
 
-// Public extension init (global scope, C linkage), kept here so
-// transcribe.cpp stays family-agnostic.
-extern "C" void transcribe_titanet_diarize_ext_init(struct transcribe_titanet_diarize_ext * p) {
+}  // namespace transcribe::titanet
+
+// Public extension init, at global scope like every other family's, and not
+// only for tidiness: visibility is hidden by default here, and the attribute
+// that lifts it comes from the declaration in the public header, which is at
+// global scope. Defined inside a namespace the definition is a different
+// entity as far as that attribute is concerned, so it stays hidden -- the
+// archive still resolves it and the shared library does not export it at all.
+extern "C" TRANSCRIBE_API void transcribe_titanet_diarize_ext_init(struct transcribe_titanet_diarize_ext * p) {
     if (p == nullptr) {
         return;
     }
@@ -609,5 +615,3 @@ extern "C" void transcribe_titanet_diarize_ext_init(struct transcribe_titanet_di
     p->ext.size = sizeof(*p);
     p->ext.kind = TRANSCRIBE_EXT_KIND_TITANET_DIARIZE;
 }
-
-}  // namespace transcribe::titanet
