@@ -65,6 +65,37 @@ error is attribution.
 Cost: about 18 seconds for 18.6 minutes of audio on a laptop RTX 4070, which
 is 60x realtime, nearly all of it in the per-window embedding.
 
+## With a voice activity detector in front
+
+`models/fsmn-vad` answers per frame whether anybody is speaking, and its
+regions can be handed to the diarizer (`--speech`, or
+`transcribe_titanet_diarize_ext::speech_ms`). This is what the extra cluster
+needed, and it is also not free. Measured on the four meetings, at three
+widths of the regions -- as the detector draws them, and dilated on each side,
+since a detector's edges are tight to the speech and an embedding window wants
+context:
+
+| regions | ES2011a | IS1008a | ES2011c | TS3004a | counts right |
+|---------|---------|---------|---------|---------|--------------|
+| none (energy) | 4, 11.3% | 5, 4.6% | 5, 8.4% | 5, 14.2% | 1 of 4 |
+| as detected | **3, 29.1%** | **4**, 4.4% | **4**, 7.6% | **4**, 12.8% | 3 of 4 |
+| +100 ms | 4, 11.3% | 5, 4.7% | **4**, 7.8% | 5, 13.9% | 2 of 4 |
+| +200 ms | 4, 12.0% | 5, 4.6% | 5, 8.3% | 5, 14.5% | 1 of 4 |
+
+Tight regions fix the count on three meetings including ES2011c, which nothing
+else has ever fixed, and improve confusion on all three. They cost ES2011a its
+count and double its confusion, and that meeting is the one with a speaker who
+talks for 25 seconds in 14 minutes: drop a few of their windows at region
+edges and there is not enough of them left to be a cluster.
+
+Widening the regions trades that back, one meeting at a time, until at 200 ms
+the non-speech is readmitted and everything is as it was.
+
+There is no width that is right for all four, which is what a table of four
+meetings can honestly say. What it says about practice is: pass the regions,
+and pass `--speakers` when the number is known -- with both, ES2011a comes
+back at 16.2% rather than 29.1%, and the meetings that were wrong stay right.
+
 ## Known limits
 
 **The count runs one over.** Three of the four meetings report five speakers
@@ -184,6 +215,31 @@ Two meetings lose a third of their speech to buy a speaker count. That is the
 wrong trade, and it is worth noticing that the experiment which chose the
 threshold measured only the count -- the coverage cost was visible in the
 window totals at the time and went unweighed.
+
+**Merging labels that trade places.** People do not swap the floor with no gap
+between them, so two labels that alternate within a second, over and over,
+should be one voice changing rather than two people talking. It is how the
+workshop's over-split was diagnosed: its three biggest labels traded places
+684 times in 109 minutes, which no two people do.
+
+As a repair it does not work, because a dominant speaker alternates with
+everybody constantly and looks exactly the same. Measured as a share of the
+smaller cluster's turns, against the AMI meetings where every cluster is
+known to be a different speaker:
+
+| pair | share | truth |
+|------|-------|-------|
+| IS1008a S02/S04 | 1.50 | two people |
+| IS1008a S02/S03 | 1.43 | two people |
+| ES2011a S01/S03 | 1.06 | two people |
+| TS3004a S02/S03 | 0.97 | two people |
+| workshop S01/S03 | 0.94 | **one voice** |
+| ES2011c S01/S02 | 0.89 | two people |
+
+The one known split sits in the middle of the distribution of genuine pairs,
+and several real pairs score higher. The signal is real when the answer is
+already known from somewhere else -- a presenter holding 68% of the floor
+cannot be three clusters of 25% -- and worthless as an automatic test.
 
 ## What would move it
 

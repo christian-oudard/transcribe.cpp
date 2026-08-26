@@ -87,6 +87,10 @@ namespace titanet {
 extern const Arch arch;
 }
 
+namespace fsmn_vad {
+extern const Arch arch;
+}
+
 const Arch * find_arch(const char * name) {
     if (name == nullptr) {
         return nullptr;
@@ -96,7 +100,7 @@ const Arch * find_arch(const char * name) {
         &parakeet::arch,         &cohere::arch,      &canary::arch,     &qwen3_asr::arch, &voxtral::arch,
         &voxtral_realtime::arch, &canary_qwen::arch, &whisper::arch,    &moonshine::arch, &moonshine_streaming::arch,
         &sensevoice::arch,       &funasr_nano::arch, &gigaam::arch,     &granite::arch,   &granite_nar::arch,
-        &medasr::arch,           &moss::arch,        &sortformer::arch, &titanet::arch,
+        &medasr::arch,           &moss::arch,        &sortformer::arch, &titanet::arch, &fsmn_vad::arch,
     };
     constexpr size_t k_n = sizeof(k_archs) / sizeof(k_archs[0]);
 

@@ -64,6 +64,9 @@ add_library(transcribe
     arch/sortformer/stream.cpp
     arch/sortformer/capabilities.cpp
     arch/sortformer/weights.cpp
+    arch/fsmn_vad/model.cpp
+    arch/fsmn_vad/capabilities.cpp
+    arch/fsmn_vad/weights.cpp
     arch/titanet/model.cpp
     arch/titanet/diarize.cpp
     arch/titanet/capabilities.cpp
@@ -138,6 +141,7 @@ add_library(transcribe
     # linkage; diarize/cluster.cpp is the cosine metric and the cut policy.
     diarize/cluster.cpp
     diarize/count.cpp
+    diarize/regions.cpp
     diarize/windows.cpp
     third_party/fastcluster/fastcluster.cpp
     # Vendored miniz (src/third_party/miniz, see its UPSTREAM file): the

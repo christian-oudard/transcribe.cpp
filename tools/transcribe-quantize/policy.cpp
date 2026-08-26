@@ -141,11 +141,14 @@ Bucket classify_tensor(const std::string & name) {
     if (name == "frontend.mel_filterbank" || name == "frontend.window") {
         return Bucket::Norm;
     }
-    // SenseVoice: per-feature CMVN shift/scale (1D, d_input). Applied
-    // additively/multiplicatively to the LFR-stacked mel frame; loader
-    // requires F32, and the tensors are too small (560 elements) to
-    // benefit from quantization.
-    if (name == "frontend.cmvn.shift" || name == "frontend.cmvn.scale") {
+    // Per-feature CMVN shift/scale (1D, d_input), for every family that has
+    // them: sensevoice, funasr-nano, fsmn-vad. Applied additively and
+    // multiplicatively to the LFR-stacked mel frame, read back to host at
+    // load, and far too small to be worth quantizing. Matched by suffix
+    // rather than by exact name, because the exact-name version silently
+    // missed a family that spelled the prefix differently and the loader
+    // then read a quantized buffer as floats.
+    if (ends_with(name, "cmvn.shift") || ends_with(name, "cmvn.scale")) {
         return Bucket::Norm;
     }
     // SenseVoice: encoder prefix-token embedding (16 × d_input = 16×560)

@@ -213,6 +213,18 @@ transcribe_apply_warnings(transcribe_diarize_windows_unit)
 
 add_test(NAME transcribe_diarize_windows_unit COMMAND transcribe_diarize_windows_unit)
 
+add_executable(transcribe_diarize_regions_unit
+    diarize_regions_unit.cpp)
+
+target_link_libraries(transcribe_diarize_regions_unit PRIVATE transcribe ggml)
+
+target_include_directories(transcribe_diarize_regions_unit PRIVATE
+    ${CMAKE_SOURCE_DIR}/src)
+
+transcribe_apply_warnings(transcribe_diarize_regions_unit)
+
+add_test(NAME transcribe_diarize_regions_unit COMMAND transcribe_diarize_regions_unit)
+
 # -----------------------------------------------------------------------------
 # Chunked-prefill causal mask geometry (pure host, no model)
 

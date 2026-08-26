@@ -47,13 +47,13 @@ static constexpr char k_default_variant[] = "speakerverification_en_titanet_larg
 
 TitanetModel::~TitanetModel() {
     if (bn_buffer != nullptr) {
-        ggml_backend_buffer_free(bn_buffer);
+        transcribe::safe_buffer_free(bn_buffer);
     }
     if (bn_ctx != nullptr) {
         ggml_free(bn_ctx);
     }
     if (backend_buffer != nullptr) {
-        ggml_backend_buffer_free(backend_buffer);
+        transcribe::safe_buffer_free(backend_buffer);
     }
     if (ctx_meta != nullptr) {
         ggml_free(ctx_meta);
@@ -62,7 +62,7 @@ TitanetModel::~TitanetModel() {
 
 TitanetSession::~TitanetSession() {
     if (sched != nullptr) {
-        ggml_backend_sched_free(sched);
+        transcribe::safe_sched_free(sched);
     }
     if (compute_ctx != nullptr) {
         ggml_free(compute_ctx);
