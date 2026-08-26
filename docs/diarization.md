@@ -119,6 +119,34 @@ grouped, correctly, as a thing that is not any of the four voices. The count is
 right about what it was given; the windowing gave it something that is not a
 person.
 
+**Short recordings were counted by how badly the graph broke.** The sweep over
+pruning widths starts at two neighbours per window. On a long meeting that is
+never chosen -- there are hundreds of windows and a width that sparse loses to
+wider ones -- but on thirty seconds of two voices the whole sweep is p in
+{2, 3, 4}, and at 2 and 3 the affinity graph falls into pieces:
+
+| p | eigenvalues | pieces | k | gap/p |
+|---|-------------|--------|---|-------|
+| 2 | -0.000 0.000 0.055 0.315 | 2 | 8 | 0.189 |
+| 3 | -0.000 -0.000 0.217 0.366 | 2 | 6 | 0.098 |
+| 4 | -0.000 0.019 0.371 0.618 | 1 | 2 | 0.088 |
+
+The multiplicity of eigenvalue zero is the number of connected components, so
+on a broken graph the widest eigengap measures the break rather than the room,
+and the NME criterion -- widest gap for the width -- then prefers the most
+broken candidate. Thirty seconds of two voices came back as eight speakers.
+
+Widths that disconnect the graph are now passed over when any width does not,
+which picks p=4 above and answers two. The four meetings are unchanged to the
+digit, which is the point: on those, every candidate width is already
+connected and the rule never binds.
+
+What it does not fix is the count on a chain-like geometry. Two synthetic
+groups of slowly rotating vectors -- a voice drifting rather than sitting in a
+ball -- estimate at 4, 8, or 12 speakers with the rule and without it. No real
+recording here shows that shape, so it stays a note rather than a change, but
+it is the first place to look at the count again.
+
 **Overlapping speech is out of scope.** A window is attributed to one speaker.
 In the published AMI numbers overlap accounts for about twenty points of
 diarization error against one or two for the choice of clustering, so this is

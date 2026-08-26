@@ -269,6 +269,10 @@ std::vector<int32_t> kmeans(const std::vector<double> & x, int32_t rows, int32_t
 
 }  // namespace
 
+// Below this an eigenvalue of the normalized Laplacian is zero rather than
+// small, which is what says the graph is in more than one piece.
+constexpr double kZeroEigen = 1e-6;
+
 Spectrum spectral(const float * embeddings, int32_t n, int32_t dim, int32_t max_speakers, int32_t want_speakers) {
     Spectrum out;
     if (embeddings == nullptr || n <= 1 || dim <= 0 || max_speakers < 1) {
@@ -286,9 +290,10 @@ Spectrum spectral(const float * embeddings, int32_t n, int32_t dim, int32_t max_
     const std::vector<double> affinity = affinity_of(e, rows, dim);
     const int32_t             cap      = std::min(max_speakers, rows - 2);
 
-    int32_t best_p     = 2;
-    int32_t best_k     = 1;
-    double  best_ratio = 0.0;
+    int32_t best_p          = 2;
+    int32_t best_k          = 1;
+    double  best_ratio      = 0.0;
+    int32_t best_components = rows + 1;
     for (int step = 1; step <= kSweep; ++step) {
         // Widths spread across the plausible range: too few neighbours and the
         // graph falls apart into isolated windows, too many and everyone is
@@ -311,15 +316,41 @@ Spectrum spectral(const float * embeddings, int32_t n, int32_t dim, int32_t max_
                 k   = i + 1;
             }
         }
+        // How many pieces the pruned graph fell into. For a normalized
+        // Laplacian the multiplicity of eigenvalue zero is exactly the number
+        // of connected components, and a component is not a speaker: keeping
+        // only two neighbours per window on a short recording disconnects it,
+        // and the widest eigengap then measures how badly it broke.
+        //
+        // The boundary is not delicate. Jacobi returns a true zero at around
+        // 1e-12, and the smallest non-zero eigenvalue seen on a connected
+        // graph here is 0.019.
+        int32_t components = 0;
+        for (const double v : ev) {
+            if (v < kZeroEigen) {
+                ++components;
+            }
+        }
+
         // The pruning width to believe is the one whose eigengap is widest for
-        // its size, which is what makes this need no tuned constant.
+        // its size, which is what makes this need no tuned constant -- but
+        // only among widths that left the graph in one piece. Spectral
+        // clustering counts clusters in a connected graph; on a disconnected
+        // one the count it reads is the number of pieces, which is a fact
+        // about the pruning and not about the room.
         const double ratio = gap / static_cast<double>(p);
-        log_msg(TRANSCRIBE_LOG_LEVEL_DEBUG, "diarize: p=%d k=%d gap=%.4f ratio=%.5f ev=%.3f %.3f %.3f %.3f %.3f %.3f",
-                p, k, gap, ratio, ev[0], ev[1], ev[2], ev[3], ev[4], ev[5]);
-        if (ratio > best_ratio) {
-            best_ratio = ratio;
-            best_k     = k;
-            best_p     = p;
+        log_msg(TRANSCRIBE_LOG_LEVEL_DEBUG,
+                "diarize: p=%d k=%d gap=%.4f ratio=%.5f parts=%d ev=%.3f %.3f %.3f %.3f %.3f %.3f", p, k, gap, ratio,
+                components, ev[0], ev[1], ev[2], ev[3], ev[4], ev[5]);
+        // Fewest pieces first, so a connected graph beats a broken one however
+        // wide the broken one's gap. Every width disconnecting is possible --
+        // very short audio, or a room where nobody sounds like anybody -- and
+        // then the least broken one is the best there is.
+        if (components < best_components || (components == best_components && ratio > best_ratio)) {
+            best_components = components;
+            best_ratio      = ratio;
+            best_k          = k;
+            best_p          = p;
         }
     }
 
