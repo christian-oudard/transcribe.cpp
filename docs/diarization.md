@@ -70,37 +70,46 @@ is 60x realtime, nearly all of it in the per-window embedding.
 `models/fsmn-vad` answers per frame whether anybody is speaking, and its
 regions can be handed to the diarizer (`--speech`, or
 `transcribe_titanet_diarize_ext::speech_ms`). This is what the extra cluster
-needed, and it is also not free. Measured on the four meetings, at three
-widths of the regions -- as the detector draws them, and dilated on each side,
-since a detector's edges are tight to the speech and an embedding window wants
-context:
+needed. Measured on the four meetings, at three widths -- as the detector
+draws them, and dilated on each side, since a detector's edges are tight to
+the speech where an embedding window wants context:
 
-| regions | ES2011a | IS1008a | ES2011c | TS3004a | counts right |
-|---------|---------|---------|---------|---------|--------------|
-| none (energy) | 4, 11.3% | 5, 4.6% | 5, 8.4% | 5, 14.2% | 1 of 4 |
-| as detected | **3, 29.1%** | **4**, 4.4% | **4**, 7.6% | **4**, 12.8% | 3 of 4 |
-| +100 ms | 4, 11.3% | 5, 4.7% | **4**, 7.8% | 5, 13.9% | 2 of 4 |
-| +200 ms | 4, 12.0% | 5, 4.6% | 5, 8.3% | 5, 14.5% | 1 of 4 |
+| regions | ES2011a | ES2011c | IS1008a | TS3004a |
+|---------|---------|---------|---------|---------|
+| none (energy) | 4, 11.0% | 5, 8.2% | 5, 4.6% | 5, 13.4% |
+| as detected | 3, **9.6%** | **4**, **7.5%** | 5, 4.5% | **4**, **12.6%** |
+| +100 ms | 3, 9.8% | **4**, 7.5% | 5, **4.4%** | 5, 13.5% |
+| +200 ms | 4, 11.7% | **4**, 7.7% | 5, 4.6% | 5, 13.6% |
 
-Tight regions fix the count on three meetings including ES2011c, which nothing
-else has ever fixed, and improve confusion on all three. They cost ES2011a its
-count and double its confusion, and that meeting is the one with a speaker who
-talks for 25 seconds in 14 minutes: drop a few of their windows at region
-edges and there is not enough of them left to be a cluster.
+Pass the regions as the detector draws them. That is best or equal on
+confusion for all four meetings and fixes the count on two of the three that
+were over; dilating gives the improvement back a meeting at a time, and at
+200 ms the non-speech is readmitted and everything is roughly as it was.
 
-Widening the regions trades that back, one meeting at a time, until at 200 ms
-the non-speech is readmitted and everything is as it was.
+ES2011a comes back with three, and three is the honest answer: it has a
+speaker who talks for 19.5 seconds in 13.6 minutes, and this pipeline has
+never resolved them, with the detector or without it. What it used to report
+as that meeting's fourth speaker was a cluster that is 90% non-speech. The
+detector removes the cluster; it does not remove the speaker, whose audio it
+keeps 94.9% of.
 
-There is no width that is right for all four, which is what a table of four
-meetings can honestly say. What it says about practice is: pass the regions,
-and pass `--speakers` when the number is known -- with both, ES2011a comes
-back at 16.2% rather than 29.1%, and the meetings that were wrong stay right.
+An earlier version of this section reported that width as costing ES2011a its
+count *and* doubling its confusion, to 29.1%. That number was a scoring error,
+not a result. The scorer enumerated mappings by permuting the hypothesis
+clusters against the reference speakers and zipping them, and zip truncates:
+with three clusters for four speakers the fourth speaker could not be mapped
+at all, so every frame of the largest well-recognised speaker counted as
+confused. It is 9.6%, and the detector improves every meeting rather than
+trading one against three.
 
 ## Known limits
 
-**The count runs one over.** Three of the four meetings report five speakers
-where there are four, and the extra cluster is not a stray -- it holds between
-9 and 15 per cent of the talk time.
+**The count runs one over, without the detector in front.** Three of the four
+meetings report five speakers where there are four, and the extra cluster is
+not a stray -- it holds between 9 and 15 per cent of the talk time. With the
+detector's regions two of those three come back at four; the section above has
+the numbers. What follows is why the extra one appears at all, which is worth
+keeping: it is the argument for the detector.
 
 It is also not a speaker. Scoring each hypothesis cluster against the reference
 by what it actually contains, on IS1008a:
@@ -146,6 +155,15 @@ groups of slowly rotating vectors -- a voice drifting rather than sitting in a
 ball -- estimate at 4, 8, or 12 speakers with the rule and without it. No real
 recording here shows that shape, so it stays a note rather than a change, but
 it is the first place to look at the count again.
+
+**A speaker with twenty seconds in fourteen minutes is not resolved.** ES2011a
+has one, and neither the energy gate nor the detector's regions changes that:
+their windows are too few to be a cluster, and the count estimator does not
+see them as one. It is not a gating problem -- 94.9% of their speech is inside
+the detector's regions -- and no width of window or region tried here recovers
+them. What would is a different question from the one on this page: not how
+many people are talking, but whether a handful of windows scattered across a
+meeting belong together.
 
 **Overlapping speech is out of scope.** A window is attributed to one speaker.
 In the published AMI numbers overlap accounts for about twenty points of
