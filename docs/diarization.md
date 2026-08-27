@@ -86,6 +86,21 @@ confusion for all four meetings and fixes the count on two of the three that
 were over; dilating gives the improvement back a meeting at a time, and at
 200 ms the non-speech is readmitted and everything is roughly as it was.
 
+A region shorter than half a second is worth dropping before the windows are
+drawn. The detector answers whether a frame is speech and a cough, a door or a
+laugh gets a yes; nobody says a word in under half a second, so what is left
+after that floor is people talking. It takes the last over-count out --
+IS1008a goes to four -- and improves confusion on three of the four:
+
+| regions | ES2011a | ES2011c | IS1008a | TS3004a |
+|---------|---------|---------|---------|---------|
+| as detected | 3, 9.6% | 4, 7.5% | 5, 4.5% | 4, 12.6% |
+| at least 500 ms | 3, **9.5%** | 4, **7.4%** | **4**, 4.5% | 4, **12.4%** |
+| at least 1 s | 3, 9.5% | 4, 7.6% | **4**, 4.5% | 4, **12.2%** |
+
+Both thresholds fix the count, which is what says this is a floor rather than
+a constant fitted to four recordings.
+
 ES2011a comes back with three, and three is the honest answer: it has a
 speaker who talks for 19.5 seconds in 13.6 minutes, and this pipeline has
 never resolved them, with the detector or without it. What it used to report
