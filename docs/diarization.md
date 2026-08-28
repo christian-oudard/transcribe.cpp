@@ -180,6 +180,20 @@ them. What would is a different question from the one on this page: not how
 many people are talking, but whether a handful of windows scattered across a
 meeting belong together.
 
+**A chunked transcript used to depend on where the cuts fell.** Not this
+page's subject, but it was found here and it changes what these numbers mean.
+`per_feature` normalization takes each mel bin's mean and standard deviation
+over the frames it is handed, so a recording cut into pieces normalized each
+piece against itself. Measured on ES2011a, moving the cuts from three minutes
+to two and a half changed 9.8% of the words, and to two minutes fifty, 6.1% --
+diffusely through each piece rather than at the seams, which is what says it
+was the normalization and not the joins.
+
+`transcribe_feature_stats` computes the statistics once over the whole
+recording and `transcribe_run_params::norm_mean` hands the same ones to every
+piece. A piece normalized that way is the same to 2.5e-06 as that audio inside
+the whole recording, against 3.2 without.
+
 **Overlapping speech is out of scope.** A window is attributed to one speaker.
 In the published AMI numbers overlap accounts for about twenty points of
 diarization error against one or two for the choice of clustering, so this is

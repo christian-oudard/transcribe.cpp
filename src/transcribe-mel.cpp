@@ -346,7 +346,8 @@ transcribe_status MelFrontend::compute(const float *        pcm,
                                        std::vector<float> & out_mel,
                                        int &                out_n_mels,
                                        int &                out_n_frames,
-                                       int                  n_threads) const {
+                                       int                  n_threads,
+                                       const NormStats *    norm) const {
     if (pcm == nullptr) {
         return TRANSCRIBE_ERR_INVALID_ARG;
     }
@@ -722,7 +723,7 @@ transcribe_status MelFrontend::compute(const float *        pcm,
         // padding artifact, so skip the trailing mask (it would zero a
         // legitimate final frame). NeMo-style reflect/constant padding
         // needs the mask — see the trailing-frame rationale above.
-        if (!no_pad) {
+        if (!no_pad && !cfg_.raw_stats) {
             const int valid = static_cast<int>(n_samples / static_cast<size_t>(cfg_.hop_length));
             for (int m = 0; m < n_mels; ++m) {
                 float * row = out_mel.data() + static_cast<size_t>(m) * n_frames;
@@ -837,20 +838,29 @@ transcribe_status MelFrontend::compute(const float *        pcm,
         const float * src = log_mel.data() + static_cast<size_t>(m) * n_frames;
         float *       dst = out_mel.data() + static_cast<size_t>(m) * n_frames;
 
-        double sum = 0.0;
-        for (int t = 0; t < n_norm; ++t) {
-            sum += static_cast<double>(src[t]);
-        }
-        const double mean = sum / static_cast<double>(n_norm);
+        // The caller's statistics where it has them, which is how every piece
+        // of one recording is normalized against the same numbers instead of
+        // against itself; see NormStats.
+        double mean   = 0.0;
+        double stddev = 0.0;
+        if (norm != nullptr && norm->ok(n_mels)) {
+            mean   = static_cast<double>(norm->mean[static_cast<size_t>(m)]);
+            stddev = static_cast<double>(norm->stddev[static_cast<size_t>(m)]);
+        } else {
+            double sum = 0.0;
+            for (int t = 0; t < n_norm; ++t) {
+                sum += static_cast<double>(src[t]);
+            }
+            mean = sum / static_cast<double>(n_norm);
 
-        double sumsq = 0.0;
-        for (int t = 0; t < n_norm; ++t) {
-            const double d = static_cast<double>(src[t]) - mean;
-            sumsq += d * d;
+            double sumsq = 0.0;
+            for (int t = 0; t < n_norm; ++t) {
+                const double d = static_cast<double>(src[t]) - mean;
+                sumsq += d * d;
+            }
+            stddev = std::sqrt(sumsq / static_cast<double>(n_norm - 1));
         }
-        const double var    = sumsq / static_cast<double>(n_norm - 1);
-        const double stddev = std::sqrt(var);
-        const double inv    = 1.0 / (stddev + static_cast<double>(kNormEps));
+        const double inv = 1.0 / (stddev + static_cast<double>(kNormEps));
 
         for (int t = 0; t < n_norm; ++t) {
             dst[t] = static_cast<float>((static_cast<double>(src[t]) - mean) * inv);
@@ -864,6 +874,52 @@ transcribe_status MelFrontend::compute(const float *        pcm,
 
     out_n_mels   = n_mels;
     out_n_frames = n_frames;
+    return TRANSCRIBE_OK;
+}
+
+// stats runs the frontend over a whole recording with the normalize step
+// skipped, and reduces what comes out to a mean and a standard deviation per
+// mel bin -- the same numbers per_feature would have computed had the model
+// been handed all of it at once.
+//
+// Unbiased, dividing by (n - 1), because that is what NeMo's normalize_batch
+// does and the point of this is to be indistinguishable from the whole-clip
+// case.
+transcribe_status MelFrontend::stats(const float * pcm, size_t n_samples, NormStats & out, int n_threads) const {
+    MelConfig raw = cfg_;
+    raw.normalize = "none";
+    raw.raw_stats = true;
+    MelFrontend plain(raw);
+
+    std::vector<float> mel;
+    int                n_mels   = 0;
+    int                n_frames = 0;
+    if (const transcribe_status st = plain.compute(pcm, n_samples, mel, n_mels, n_frames, n_threads);
+        st != TRANSCRIBE_OK) {
+        return st;
+    }
+    if (n_mels <= 0 || n_frames < 2) {
+        return TRANSCRIBE_ERR_INVALID_ARG;
+    }
+
+    out.mean.assign(static_cast<size_t>(n_mels), 0.0f);
+    out.stddev.assign(static_cast<size_t>(n_mels), 0.0f);
+    for (int m = 0; m < n_mels; ++m) {
+        const float * src = mel.data() + static_cast<size_t>(m) * n_frames;
+        double        sum = 0.0;
+        for (int t = 0; t < n_frames; ++t) {
+            sum += static_cast<double>(src[t]);
+        }
+        const double mean = sum / static_cast<double>(n_frames);
+
+        double sumsq = 0.0;
+        for (int t = 0; t < n_frames; ++t) {
+            const double d = static_cast<double>(src[t]) - mean;
+            sumsq += d * d;
+        }
+        out.mean[static_cast<size_t>(m)]   = static_cast<float>(mean);
+        out.stddev[static_cast<size_t>(m)] = static_cast<float>(std::sqrt(sumsq / static_cast<double>(n_frames - 1)));
+    }
     return TRANSCRIBE_OK;
 }
 

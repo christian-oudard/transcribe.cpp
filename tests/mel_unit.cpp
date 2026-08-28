@@ -204,12 +204,79 @@ void test_n_frames_for() {
     CHECK(mf.n_frames_for(0) == 1);
 }
 
+// Statistics from the whole recording make a piece of it come out the same as
+// it does inside the whole.
+//
+// This is the property the chunked path rests on. Without it "per_feature"
+// normalizes each piece against itself, so every frame in a piece depends on
+// where the cuts fell -- measured on an eighteen minute meeting, moving them
+// by ten seconds changed 6 to 10 per cent of the words, diffusely rather than
+// at the seams.
+void test_shared_norm_stats() {
+    transcribe::MelFrontend mf(parakeet_config());
+
+    // Something with structure, so the two halves have genuinely different
+    // statistics: a rising tone, loud in the first half and quiet in the
+    // second.
+    std::vector<float> pcm(160000);
+    for (size_t i = 0; i < pcm.size(); ++i) {
+        const double t    = static_cast<double>(i) / 16000.0;
+        const double gain = (i < pcm.size() / 2) ? 0.5 : 0.05;
+        pcm[i]            = static_cast<float>(gain * std::sin(2.0 * 3.14159265 * (200.0 + 60.0 * t) * t));
+    }
+
+    std::vector<float> whole;
+    int                n_mels = 0, n_frames = 0;
+    CHECK(mf.compute(pcm.data(), pcm.size(), whole, n_mels, n_frames) == TRANSCRIBE_OK);
+
+    transcribe::NormStats stats;
+    CHECK(mf.stats(pcm.data(), pcm.size(), stats) == TRANSCRIBE_OK);
+    CHECK(stats.ok(n_mels));
+
+    // The second half on its own, normalized against the whole recording.
+    const size_t       half = pcm.size() / 2;
+    std::vector<float> piece;
+    int                p_mels = 0, p_frames = 0;
+    CHECK(mf.compute(pcm.data() + half, half, piece, p_mels, p_frames, 0, &stats) == TRANSCRIBE_OK);
+    CHECK(p_mels == n_mels);
+
+    // Compare away from the edges, where the piece's own reflect padding
+    // legitimately differs from the middle of a longer clip.
+    const int    at    = n_frames - p_frames;
+    double       worst = 0.0;
+    for (int m = 0; m < n_mels; ++m) {
+        for (int t = 20; t < p_frames - 20; ++t) {
+            const double a = whole[static_cast<size_t>(m) * n_frames + at + t];
+            const double b = piece[static_cast<size_t>(m) * p_frames + t];
+            worst          = std::max(worst, std::fabs(a - b));
+        }
+    }
+    // The framing itself is identical -- checked at 0 deviation -- so what
+    // is left below is the normalization and nothing else.
+    CHECK(worst < 1e-4);
+
+    // And without the statistics it is a different signal altogether, which
+    // is the failure this exists to prevent.
+    std::vector<float> alone;
+    CHECK(mf.compute(pcm.data() + half, half, alone, p_mels, p_frames) == TRANSCRIBE_OK);
+    double apart = 0.0;
+    for (int m = 0; m < n_mels; ++m) {
+        for (int t = 20; t < p_frames - 20; ++t) {
+            const double a = whole[static_cast<size_t>(m) * n_frames + at + t];
+            const double b = alone[static_cast<size_t>(m) * p_frames + t];
+            apart          = std::max(apart, std::fabs(a - b));
+        }
+    }
+    CHECK(apart > 0.1);
+}
+
 }  // namespace
 
 int main() {
     test_window();
     test_mel_filterbank();
     test_n_frames_for();
+    test_shared_norm_stats();
 
     if (g_failures > 0) {
         std::fprintf(stderr, "mel_unit: %d failures\n", g_failures);

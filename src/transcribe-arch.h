@@ -129,6 +129,23 @@ struct Arch {
     // out of the guarantee). NULL is skipped; the generic header-size + kind
     // checks remain in force.
     transcribe_status (*run_validate)(const struct transcribe_session * ctx, const transcribe_run_params * params);
+
+    // Optional. Per-mel-bin normalization statistics over a whole recording,
+    // for a caller who cuts one into pieces and wants every piece normalized
+    // against the same numbers rather than against itself. Fills n_mels means
+    // and standard deviations; see transcribe_run_params::norm_mean.
+    //
+    // NULL for a family with no mel frontend, which is what
+    // transcribe_feature_bins returning 0 tells a caller.
+    transcribe_status (*feature_stats)(const struct transcribe_model * model,
+                                       const float *                   pcm,
+                                       size_t                          n_samples,
+                                       float *                         mean,
+                                       float *                         stddev,
+                                       int32_t                         n_mels);
+
+    // Optional. How many mel bins feature_stats fills, or 0 for no frontend.
+    int32_t (*feature_bins)(const struct transcribe_model * model);
 };
 
 // Look up an architecture by name. Returns nullptr if no registered

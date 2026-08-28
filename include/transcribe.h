@@ -1140,9 +1140,59 @@ struct transcribe_run_params {
      *   to know whether the field will take effect.
      */
     int32_t spec_k_drafts;
+
+    /*
+     * norm_mean / norm_stddev: per-mel-bin feature normalization statistics
+     *   to use for this run, instead of the ones this clip would produce.
+     *   Both NULL (the default) means "take them from the clip", which is
+     *   right for a recording transcribed in one pass.
+     *
+     *   They exist for the caller who cuts a long recording into pieces.
+     *   "per_feature" normalization subtracts each mel bin's mean and divides
+     *   by its standard deviation over the frames it is handed, so a piece is
+     *   normalized against itself: every frame in it comes out slightly
+     *   different from what it would have been in a longer piece, and the
+     *   decode can differ anywhere, not only at the seams. Measured on an
+     *   eighteen minute meeting, moving the cuts by ten seconds changed 6 to
+     *   10 per cent of the words.
+     *
+     *   Compute them once over the whole recording with
+     *   transcribe_feature_stats() and pass the same ones to every piece.
+     *   Then a chunked transcript differs from an unchunked one only in the
+     *   words that straddle a cut.
+     *
+     *   norm_n_mels must equal the model's mel bin count
+     *   (transcribe_feature_bins); a mismatch is TRANSCRIBE_ERR_INVALID_ARG.
+     *   Families with no mel frontend ignore all three.
+     */
+    const float * norm_mean;
+    const float * norm_stddev;
+    int32_t       norm_n_mels;
 };
 
 TRANSCRIBE_API void transcribe_run_params_init(struct transcribe_run_params * params);
+
+/*
+ * Mel bins this model's frontend produces, or 0 for a family with no mel
+ * frontend. The size of the arrays transcribe_feature_stats() fills.
+ */
+TRANSCRIBE_API int32_t transcribe_feature_bins(const struct transcribe_model * model);
+
+/*
+ * Per-bin feature normalization statistics over a whole recording, for
+ * normalizing its pieces against the same numbers. See
+ * transcribe_run_params::norm_mean.
+ *
+ * pcm is 16 kHz mono float32. mean and stddev are filled with
+ * transcribe_feature_bins(model) floats each. One pass of the frontend over
+ * the audio, no model inference: about 2 ms per second of audio.
+ */
+TRANSCRIBE_API transcribe_status transcribe_feature_stats(const struct transcribe_model * model,
+                                                          const float *                   pcm,
+                                                          size_t                          n_samples,
+                                                          float *                         mean,
+                                                          float *                         stddev,
+                                                          int32_t                         n_mels);
 
 /* ----------------------------------------------------------------------- */
 /* Capabilities                                                            */

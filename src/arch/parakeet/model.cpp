@@ -988,8 +988,18 @@ transcribe_status run_one_shot_inner(ParakeetSession *             pc,
     const int64_t t_mel_start  = ggml_time_us();
     int           mel_n_mels   = 0;
     int           mel_n_frames = 0;
-    if (const transcribe_status mst =
-            pm->mel->compute(pcm, static_cast<size_t>(n_samples), pc->mel_buf, mel_n_mels, mel_n_frames);
+    // The caller's statistics when it has them, which is how the pieces of one
+    // recording are normalized against the same numbers rather than each
+    // against itself; see transcribe_run_params::norm_mean.
+    transcribe::NormStats given;
+    if (params != nullptr && params->norm_mean != nullptr && params->norm_stddev != nullptr &&
+        params->norm_n_mels == pm->mel->num_mels()) {
+        given.mean.assign(params->norm_mean, params->norm_mean + params->norm_n_mels);
+        given.stddev.assign(params->norm_stddev, params->norm_stddev + params->norm_n_mels);
+    }
+    if (const transcribe_status mst = pm->mel->compute(pcm, static_cast<size_t>(n_samples), pc->mel_buf, mel_n_mels,
+                                                       mel_n_frames, pc->n_threads,
+                                                       given.mean.empty() ? nullptr : &given);
         mst != TRANSCRIBE_OK) {
         log_msg(TRANSCRIBE_LOG_LEVEL_ERROR, "parakeet run: MelFrontend::compute failed (%s)",
                 transcribe_status_string(mst));
@@ -3333,6 +3343,36 @@ bool accepts_ext_kind(const transcribe_model * model, transcribe_ext_slot slot, 
 
 // `extern const` forces external linkage (a namespace-scope const object
 // is internal-linkage in C++ otherwise).
+// Per-bin statistics over a whole recording, so a caller cutting it into
+// pieces can normalize every piece against the same numbers. See
+// transcribe_run_params::norm_mean.
+transcribe_status feature_stats(const struct transcribe_model * model,
+                                const float *                   pcm,
+                                size_t                          n_samples,
+                                float *                         mean,
+                                float *                         stddev,
+                                int32_t                         n_mels) {
+    const auto * pm = static_cast<const ParakeetModel *>(model);
+    if (!pm->mel.has_value()) {
+        return TRANSCRIBE_ERR_NOT_IMPLEMENTED;
+    }
+    transcribe::NormStats stats;
+    if (const transcribe_status st = pm->mel->stats(pcm, n_samples, stats); st != TRANSCRIBE_OK) {
+        return st;
+    }
+    if (!stats.ok(n_mels)) {
+        return TRANSCRIBE_ERR_INVALID_ARG;
+    }
+    std::copy(stats.mean.begin(), stats.mean.end(), mean);
+    std::copy(stats.stddev.begin(), stats.stddev.end(), stddev);
+    return TRANSCRIBE_OK;
+}
+
+int32_t feature_bins(const struct transcribe_model * model) {
+    const auto * pm = static_cast<const ParakeetModel *>(model);
+    return pm->mel.has_value() ? static_cast<int32_t>(pm->mel->num_mels()) : 0;
+}
+
 extern const Arch arch = {
     /* .name             = */ "parakeet",
     /* .load             = */ load,
@@ -3345,6 +3385,9 @@ extern const Arch arch = {
     /* .stream_finalize  = */ stream_finalize,
     /* .stream_reset     = */ stream_reset,
     /* .accepts_ext_kind = */ accepts_ext_kind,
+    /* .run_validate     = */ nullptr,
+    /* .feature_stats    = */ feature_stats,
+    /* .feature_bins     = */ feature_bins,
 };
 
 }  // namespace transcribe::parakeet

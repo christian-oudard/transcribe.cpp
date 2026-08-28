@@ -585,6 +585,31 @@ extern "C" void transcribe_run_params_init(struct transcribe_run_params * p) {
     p->timestamps    = TRANSCRIBE_TIMESTAMPS_AUTO;
 }
 
+extern "C" int32_t transcribe_feature_bins(const struct transcribe_model * model) {
+    if (model == nullptr || model->arch == nullptr || model->arch->feature_bins == nullptr) {
+        return 0;
+    }
+    return model->arch->feature_bins(model);
+}
+
+extern "C" transcribe_status transcribe_feature_stats(const struct transcribe_model * model,
+                                                      const float *                   pcm,
+                                                      size_t                          n_samples,
+                                                      float *                         mean,
+                                                      float *                         stddev,
+                                                      int32_t                         n_mels) {
+    if (model == nullptr || pcm == nullptr || mean == nullptr || stddev == nullptr || n_samples == 0) {
+        return TRANSCRIBE_ERR_INVALID_ARG;
+    }
+    if (model->arch == nullptr || model->arch->feature_stats == nullptr) {
+        return TRANSCRIBE_ERR_NOT_IMPLEMENTED;
+    }
+    if (n_mels != transcribe_feature_bins(model)) {
+        return TRANSCRIBE_ERR_INVALID_ARG;
+    }
+    return model->arch->feature_stats(model, pcm, n_samples, mean, stddev, n_mels);
+}
+
 extern "C" void transcribe_stream_params_init(struct transcribe_stream_params * p) {
     if (p == nullptr) {
         return;
