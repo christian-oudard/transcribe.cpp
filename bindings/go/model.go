@@ -80,6 +80,33 @@ func (m *Model) Arch() string {
 	return C.GoString(C.transcribe_model_arch_string(m.c))
 }
 
+// FeatureStats are the per-mel-bin normalization statistics over a whole
+// recording, for transcribing it in pieces that are all normalized against
+// the same numbers. Pass them back through RunOptions.Norm.
+//
+// Nil, nil for a family with no mel frontend, which is also what
+// FeatureBins reporting 0 says. One pass of the frontend over the audio and
+// no inference: about 2 ms per second of audio.
+func (m *Model) FeatureStats(pcm []float32) (*NormStats, error) {
+	bins := m.FeatureBins()
+	if bins == 0 || len(pcm) == 0 {
+		return nil, nil
+	}
+	out := &NormStats{Mean: make([]float32, bins), Stddev: make([]float32, bins)}
+	st := C.transcribe_feature_stats(m.c, (*C.float)(&pcm[0]), C.size_t(len(pcm)),
+		(*C.float)(&out.Mean[0]), (*C.float)(&out.Stddev[0]), C.int32_t(bins))
+	if err := check(st); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// FeatureBins is how many mel bins this model's frontend produces, or 0 for
+// a family that has none.
+func (m *Model) FeatureBins() int {
+	return int(C.transcribe_feature_bins(m.c))
+}
+
 // Variant is the specific model within that architecture.
 func (m *Model) Variant() string {
 	return C.GoString(C.transcribe_model_variant_string(m.c))

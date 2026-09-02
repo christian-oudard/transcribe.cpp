@@ -248,6 +248,25 @@ type RunOptions struct {
 	// WhisperRunOptions. A model that does not accept the kind fails the
 	// run with ErrInvalidArg; Model.AcceptsExtension probes for it.
 	Family RunExtension
+	// Norm are per-mel-bin normalization statistics to use instead of the
+	// ones this clip would produce, from Model.FeatureStats over the whole
+	// recording. Nil means take them from the clip, which is right for a
+	// recording transcribed in one pass.
+	//
+	// For a caller cutting a recording into pieces. Normalization subtracts
+	// each mel bin's mean and divides by its standard deviation over the
+	// frames it is given, so a piece is otherwise normalized against itself
+	// and every frame in it differs from what it would have been in a
+	// longer piece -- which changed 6 to 10 per cent of the words of an
+	// eighteen minute meeting, depending only on where the cuts fell.
+	Norm *NormStats
+}
+
+// NormStats are per-mel-bin feature normalization statistics for one
+// recording. Model.FeatureStats produces them.
+type NormStats struct {
+	Mean   []float32
+	Stddev []float32
 }
 
 // SpecDecodeOff disables speculative decoding, for reproducing pre-spec
@@ -289,6 +308,23 @@ func runParams(opts *RunOptions) (C.struct_transcribe_run_params, func()) {
 		c := C.CString(s)
 		frees = append(frees, func() { C.free(unsafe.Pointer(c)) })
 		return c
+	}
+	// Copied into C memory rather than pointed at: the params struct is
+	// handed to C, and a C struct holding a Go pointer is what cgo's pointer
+	// rules forbid. Two arrays of eighty floats.
+	cfloats := func(v []float32) *C.float {
+		if len(v) == 0 {
+			return nil
+		}
+		c := (*C.float)(C.malloc(C.size_t(len(v)) * C.size_t(unsafe.Sizeof(C.float(0)))))
+		copy(unsafe.Slice((*float32)(unsafe.Pointer(c)), len(v)), v)
+		frees = append(frees, func() { C.free(unsafe.Pointer(c)) })
+		return c
+	}
+	if opts.Norm != nil && len(opts.Norm.Mean) > 0 && len(opts.Norm.Mean) == len(opts.Norm.Stddev) {
+		p.norm_mean = cfloats(opts.Norm.Mean)
+		p.norm_stddev = cfloats(opts.Norm.Stddev)
+		p.norm_n_mels = C.int32_t(len(opts.Norm.Mean))
 	}
 	p.language = cstr(opts.Language)
 	p.target_language = cstr(opts.TargetLanguage)
