@@ -5,11 +5,9 @@
 // convolution is the exception and runs over time, so the tensor is permuted
 // around it and back.
 
-#include "fsmn_vad.h"
-
-#include "diarize/regions.h"
-
 #include "conformer/conformer.h"
+#include "diarize/regions.h"
+#include "fsmn_vad.h"
 #include "ggml.h"
 #include "gguf.h"
 #include "transcribe-arch.h"
@@ -105,11 +103,11 @@ ggml_tensor * memory(ggml_context * ctx, ggml_tensor * weight, ggml_tensor * x, 
     ggml_tensor * kernel     = ggml_reshape_3d(ctx, weight, weight->ne[0], 1, weight->ne[1]);
     // Padding the left by lorder-1 and none on the right is the causal half of
     // a same-length convolution.
-    ggml_tensor * y = conf::conv_1d_dw_f32(ctx, kernel, time_major, /*s=*/1, /*p=*/lorder - 1, /*d=*/1);
+    ggml_tensor * y          = conf::conv_1d_dw_f32(ctx, kernel, time_major, /*s=*/1, /*p=*/lorder - 1, /*d=*/1);
     // conv_1d_dw_f32 pads both sides, so the tail carries frames the model
     // must not see: keep the first T outputs, which are the causal ones.
-    y = ggml_cont(ctx, ggml_view_2d(ctx, y, time_major->ne[0], y->ne[1], y->nb[1], 0));
-    y = ggml_cont(ctx, ggml_permute(ctx, y, 1, 0, 2, 3));
+    y                        = ggml_cont(ctx, ggml_view_2d(ctx, y, time_major->ne[0], y->ne[1], y->nb[1], 0));
+    y                        = ggml_cont(ctx, ggml_permute(ctx, y, 1, 0, 2, 3));
     return ggml_add(ctx, x, y);
 }
 
@@ -148,8 +146,8 @@ Graph build(ggml_context * ctx, const FsmnVadModel & m, int frames) {
 // anonymous speaker: somebody was talking, and this model does not know who.
 void publish(FsmnVadSession * pc, const std::vector<float> & speech, double frame_ms) {
     dz::RegionRules rules;
-    rules.frame_ms      = frame_ms;
-    rules.threshold     = kSpeechThreshold;
+    rules.frame_ms       = frame_ms;
+    rules.threshold      = kSpeechThreshold;
     rules.min_silence_ms = kMinSilenceMs;
     rules.min_speech_ms  = kMinSpeechMs;
     for (const dz::Region & r : dz::regions_from_frames(speech.data(), static_cast<int32_t>(speech.size()), rules)) {
@@ -191,8 +189,7 @@ transcribe_status load(Loader & loader, const transcribe_model_load_params * par
     if (gguf_data == nullptr) {
         return TRANSCRIBE_ERR_GGUF;
     }
-    if (const transcribe_status st = build_fsmn_vad_weights(m->ctx_meta, m->hparams, m->weights);
-        st != TRANSCRIBE_OK) {
+    if (const transcribe_status st = build_fsmn_vad_weights(m->ctx_meta, m->hparams, m->weights); st != TRANSCRIBE_OK) {
         gguf_free(gguf_data);
         return st;
     }
@@ -259,9 +256,9 @@ transcribe_status init_context(transcribe_model *                model,
     return TRANSCRIBE_OK;
 }
 
-transcribe_status run(transcribe_session *          session,
-                      const float *                 pcm,
-                      int                           n_samples,
+transcribe_status run(transcribe_session * session,
+                      const float *        pcm,
+                      int                  n_samples,
                       const transcribe_run_params * /*params*/) {
     auto * pc = static_cast<FsmnVadSession *>(session);
     auto * pm = static_cast<FsmnVadModel *>(session->model);

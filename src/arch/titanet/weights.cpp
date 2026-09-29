@@ -78,7 +78,7 @@ transcribe_status kv_i32_array(const gguf_context * g, const char * key, int32_t
 // the tensors, since a block with a skip path has the convolution for it.
 transcribe_status read_published_hparams(const gguf_context * g, TitanetHParams & hp) {
     int32_t channels = 0, epilog = 0;
-#define RD(key, out)                                                        \
+#define RD(key, out)                                                           \
     if (const transcribe_status st = kv_u32(g, key, out); st != TRANSCRIBE_OK) \
     return st
     RD("titanet.emb_dim", hp.embedding_size);
@@ -171,7 +171,7 @@ transcribe_status read_titanet_hparams(const gguf_context * g, TitanetHParams & 
         log_msg(TRANSCRIBE_LOG_LEVEL_ERROR, "titanet: n_blocks %d", n);
         return TRANSCRIBE_ERR_GGUF;
     }
-#define RD_ARR(key, field)                                                                 \
+#define RD_ARR(key, field)                                                                   \
     if (const transcribe_status st = kv_i32_array(g, key, n, hp.field); st != TRANSCRIBE_OK) \
     return st
     RD_ARR("stt.titanet.encoder.filters", filters);
@@ -264,8 +264,12 @@ ggml_tensor * get_checked(ggml_context * ctx, const char * name, int64_t ne0, in
 }
 
 // get_either finds a tensor under either published name.
-ggml_tensor * get_either(ggml_context * ctx, const char * ours, const char * theirs, int64_t ne0, int64_t ne1,
-                         int64_t ne2) {
+ggml_tensor * get_either(ggml_context * ctx,
+                         const char *   ours,
+                         const char *   theirs,
+                         int64_t        ne0,
+                         int64_t        ne1,
+                         int64_t        ne2) {
     if (ggml_get_tensor(ctx, ours) == nullptr && ggml_get_tensor(ctx, theirs) != nullptr) {
         return get_checked(ctx, theirs, ne0, ne1, ne2);
     }
@@ -285,21 +289,21 @@ transcribe_status build_titanet_weights(ggml_context *         ctx,
 
 // Every tensor is looked up under both published names. The prefix is for a
 // bundle carrying this family's tensors beside another's.
-#define GET(dst, nm, alt, e0, e1, e2)                                       \
-    do {                                                                    \
-        std::snprintf(name, sizeof(name), "%s%s", pfx, (nm));               \
-        std::snprintf(other, sizeof(other), "%s%s", pfx, (alt));            \
-        (dst) = get_either(ctx, name, other, (e0), (e1), (e2));             \
-        if ((dst) == nullptr)                                               \
-            return TRANSCRIBE_ERR_GGUF;                                     \
+#define GET(dst, nm, alt, e0, e1, e2)                            \
+    do {                                                         \
+        std::snprintf(name, sizeof(name), "%s%s", pfx, (nm));    \
+        std::snprintf(other, sizeof(other), "%s%s", pfx, (alt)); \
+        (dst) = get_either(ctx, name, other, (e0), (e1), (e2));  \
+        if ((dst) == nullptr)                                    \
+            return TRANSCRIBE_ERR_GGUF;                          \
     } while (0)
-#define GETF(dst, fmt, alt, e0, e1, e2, ...)                                \
-    do {                                                                    \
-        char slot[128];                                                     \
-        char slot2[128];                                                    \
-        std::snprintf(slot, sizeof(slot), fmt, __VA_ARGS__);                \
-        std::snprintf(slot2, sizeof(slot2), alt, __VA_ARGS__);              \
-        GET(dst, slot, slot2, e0, e1, e2);                                  \
+#define GETF(dst, fmt, alt, e0, e1, e2, ...)                   \
+    do {                                                       \
+        char slot[128];                                        \
+        char slot2[128];                                       \
+        std::snprintf(slot, sizeof(slot), fmt, __VA_ARGS__);   \
+        std::snprintf(slot2, sizeof(slot2), alt, __VA_ARGS__); \
+        GET(dst, slot, slot2, e0, e1, e2);                     \
     } while (0)
 
     w.blocks.resize(static_cast<size_t>(hp.enc_n_blocks));
@@ -315,7 +319,7 @@ transcribe_status build_titanet_weights(ggml_context *         ctx,
             TitanetRepeat & rep = blk.reps[static_cast<size_t>(r)];
             // Only the first repeat changes the channel count; the rest run
             // at c_out.
-            const int64_t in = (r == 0) ? c_in : c_out;
+            const int64_t   in  = (r == 0) ? c_in : c_out;
             GETF(rep.dw, "enc.blocks.%d.rep.%d.dw.weight", "enc.b%d.s%d.dw.w", k, 1, in, b, r);
             GETF(rep.pw, "enc.blocks.%d.rep.%d.pw.weight", "enc.b%d.s%d.pw.w", 1, in, c_out, b, r);
             GETF(rep.bn_w, "enc.blocks.%d.rep.%d.bn.weight", "enc.b%d.s%d.bn.w", c_out, -1, -1, b, r);

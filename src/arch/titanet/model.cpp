@@ -6,19 +6,18 @@
 // helpers take; the reference dumps the encoder time-major, so the parity
 // tensors are transposed on the way out.
 
-#include "titanet.h"
-#include "transcribe/titanet.h"
-
 #include "conformer/conformer.h"
 #include "ggml.h"
 #include "gguf.h"
+#include "titanet.h"
 #include "transcribe-arch.h"
-#include "transcribe-debug.h"
 #include "transcribe-batch-util.h"
+#include "transcribe-debug.h"
 #include "transcribe-load-common.h"
 #include "transcribe-loader.h"
-#include "transcribe-meta.h"
 #include "transcribe-log.h"
+#include "transcribe-meta.h"
+#include "transcribe/titanet.h"
 
 #include <cmath>
 #include <cstdio>
@@ -94,12 +93,12 @@ void collect_bn_slots(TitanetWeights & w, std::vector<BnSlot> & out, float block
             out.push_back({ rep.bn_w, rep.bn_b, rep.bn_rm, rep.bn_rv, &rep.scale, &rep.shift, block_eps });
         }
         if (blk.res_pw != nullptr) {
-            out.push_back(
-                { blk.res_bn_w, blk.res_bn_b, blk.res_bn_rm, blk.res_bn_rv, &blk.res_scale, &blk.res_shift,
-                  block_eps });
+            out.push_back({ blk.res_bn_w, blk.res_bn_b, blk.res_bn_rm, blk.res_bn_rv, &blk.res_scale, &blk.res_shift,
+                            block_eps });
         }
     }
-    out.push_back({ w.pool_bn_w, w.pool_bn_b, w.pool_bn_rm, w.pool_bn_rv, &w.pool_bn_scale, &w.pool_bn_shift, other_eps });
+    out.push_back(
+        { w.pool_bn_w, w.pool_bn_b, w.pool_bn_rm, w.pool_bn_rv, &w.pool_bn_scale, &w.pool_bn_shift, other_eps });
     out.push_back({ w.emb_bn_w, w.emb_bn_b, w.emb_bn_rm, w.emb_bn_rv, &w.emb_bn_scale, &w.emb_bn_shift, other_eps });
 }
 
@@ -199,15 +198,15 @@ ggml_tensor * block(ggml_context * ctx, const TitanetBlock & blk, ggml_tensor * 
 
     for (size_t r = 0; r < blk.reps.size(); ++r) {
         const TitanetRepeat & rep = blk.reps[r];
-        ggml_tensor * dw = rep.dw;
+        ggml_tensor *         dw  = rep.dw;
         if (dw->ne[2] == 1) {
             // [k, C] there against [k, 1, C] here, which for the epilog block
             // is a kernel of width one.
             dw = ggml_reshape_3d(ctx, dw, dw->ne[0], 1, dw->ne[1]);
         }
-        h                         = conf::conv_1d_dw_f32(ctx, dw, h, /*s=*/1, /*p=*/pad, /*d=*/1);
-        h                         = pointwise(ctx, rep.pw, h);
-        h                         = conf::fused_batch_norm(ctx, h, rep.scale, rep.shift);
+        h = conf::conv_1d_dw_f32(ctx, dw, h, /*s=*/1, /*p=*/pad, /*d=*/1);
+        h = pointwise(ctx, rep.pw, h);
+        h = conf::fused_batch_norm(ctx, h, rep.scale, rep.shift);
         if (r + 1 < blk.reps.size()) {
             h = ggml_relu(ctx, h);
         }
@@ -257,7 +256,7 @@ EmbedGraph build_embed_graph(ggml_context * ctx, const TitanetModel & m, int T, 
     const TitanetHParams & hp = m.hparams;
     ggml_tensor *          x  = g.mel_in;
 
-        for (int b = 0; b < hp.enc_n_blocks; ++b) {
+    for (int b = 0; b < hp.enc_n_blocks; ++b) {
         x = block(ctx, m.weights.blocks[static_cast<size_t>(b)], x, hp.kernel[static_cast<size_t>(b)]);
         g.blocks.push_back(x);
     }
@@ -266,27 +265,27 @@ EmbedGraph build_embed_graph(ggml_context * ctx, const TitanetModel & m, int T, 
     // Attentive statistics pooling. The attention input is the encoder output
     // beside its own clip mean and deviation, so the weights a channel gets
     // depend on how that channel behaved over the whole clip.
-    const int64_t c        = enc_out->ne[1];
-    g.uniform = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, T, 1);
+    const int64_t c = enc_out->ne[1];
+    g.uniform       = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, T, 1);
     ggml_set_input(g.uniform);
-    Stats         clip     = weighted_stats(ctx, enc_out, g.uniform);
-    ggml_tensor * attn_in  = ggml_concat(ctx, enc_out, ggml_repeat(ctx, clip.mean, enc_out), 1);
-    attn_in                = ggml_concat(ctx, attn_in, ggml_repeat(ctx, clip.dev, enc_out), 1);
+    Stats         clip    = weighted_stats(ctx, enc_out, g.uniform);
+    ggml_tensor * attn_in = ggml_concat(ctx, enc_out, ggml_repeat(ctx, clip.mean, enc_out), 1);
+    attn_in               = ggml_concat(ctx, attn_in, ggml_repeat(ctx, clip.dev, enc_out), 1);
 
-    ggml_tensor * a = pointwise(ctx, m.weights.pool_attn0_w, attn_in, m.weights.pool_attn0_b);
-    a               = ggml_relu(ctx, a);
-    a               = conf::fused_batch_norm(ctx, a, m.weights.pool_bn_scale, m.weights.pool_bn_shift);
-    a               = ggml_tanh(ctx, a);
-    a               = pointwise(ctx, m.weights.pool_attn1_w, a, m.weights.pool_attn1_b);
+    ggml_tensor * a     = pointwise(ctx, m.weights.pool_attn0_w, attn_in, m.weights.pool_attn0_b);
+    a                   = ggml_relu(ctx, a);
+    a                   = conf::fused_batch_norm(ctx, a, m.weights.pool_bn_scale, m.weights.pool_bn_shift);
+    a                   = ggml_tanh(ctx, a);
+    a                   = pointwise(ctx, m.weights.pool_attn1_w, a, m.weights.pool_attn1_b);
     // Softmax over time, one distribution per channel; ne0 is time.
     ggml_tensor * alpha = ggml_soft_max(ctx, a);
 
-    Stats         pooled   = weighted_stats(ctx, enc_out, alpha);
-    g.pool_out = ggml_reshape_1d(ctx, ggml_concat(ctx, pooled.mean, pooled.dev, 1), 2 * c);
+    Stats pooled = weighted_stats(ctx, enc_out, alpha);
+    g.pool_out   = ggml_reshape_1d(ctx, ggml_concat(ctx, pooled.mean, pooled.dev, 1), 2 * c);
 
     ggml_tensor * e = ggml_add(ctx, ggml_mul(ctx, g.pool_out, m.weights.emb_bn_scale), m.weights.emb_bn_shift);
     e               = ggml_mul_mat(ctx, ggml_reshape_2d(ctx, m.weights.emb_proj_w, 2 * c, hp.embedding_size), e);
-    g.emb = ggml_add(ctx, e, m.weights.emb_proj_b);
+    g.emb           = ggml_add(ctx, e, m.weights.emb_proj_b);
 
     ggml_build_forward_expand(g.graph, g.emb);
     return g;
@@ -323,14 +322,14 @@ transcribe_status load(Loader & loader, const transcribe_model_load_params * par
 
     {
         transcribe::MelConfig cfg{};
-        cfg.sample_rate  = m->hparams.fe_sample_rate;
-        cfg.num_mels     = m->hparams.fe_num_mels;
-        cfg.n_fft        = m->hparams.fe_n_fft;
-        cfg.win_length   = m->hparams.fe_win_length;
-        cfg.hop_length   = m->hparams.fe_hop_length;
-        cfg.pre_emphasis = m->hparams.fe_pre_emphasis;
-        cfg.normalize    = m->hparams.fe_normalize;
-        cfg.pad_mode     = "constant";
+        cfg.sample_rate       = m->hparams.fe_sample_rate;
+        cfg.num_mels          = m->hparams.fe_num_mels;
+        cfg.n_fft             = m->hparams.fe_n_fft;
+        cfg.win_length        = m->hparams.fe_win_length;
+        cfg.hop_length        = m->hparams.fe_hop_length;
+        cfg.pre_emphasis      = m->hparams.fe_pre_emphasis;
+        cfg.normalize         = m->hparams.fe_normalize;
+        cfg.pad_mode          = "constant";
         // NeMo's ceil(n/hop) framing, as everywhere else NeMo is the source.
         cfg.nemo_seq_len_ceil = true;
         m->mel.emplace(cfg);
@@ -344,8 +343,7 @@ transcribe_status load(Loader & loader, const transcribe_model_load_params * par
         return TRANSCRIBE_ERR_GGUF;
     }
 
-    if (const transcribe_status st = build_titanet_weights(m->ctx_meta, m->hparams, m->weights);
-        st != TRANSCRIBE_OK) {
+    if (const transcribe_status st = build_titanet_weights(m->ctx_meta, m->hparams, m->weights); st != TRANSCRIBE_OK) {
         gguf_free(gguf_data);
         return st;
     }
@@ -428,8 +426,8 @@ transcribe_status run(transcribe_session *          session,
     // the verification pair need, and it is what a caller gets by not asking
     // for diarization.
     if (params != nullptr && params->diarize == TRANSCRIBE_DIARIZE_MODE_ON) {
-        int32_t                                 num_speakers = 0;
-        float                                   threshold    = 0.0f;
+        int32_t                                  num_speakers = 0;
+        float                                    threshold    = 0.0f;
         std::vector<transcribe::diarize::Region> speech;
         if (params->family != nullptr) {
             const auto * ext = reinterpret_cast<const transcribe_titanet_diarize_ext *>(params->family);
@@ -452,8 +450,8 @@ transcribe_status run(transcribe_session *          session,
         return TRANSCRIBE_ERR_GGUF;
     }
     int mel_n_mels = 0, T = 0;
-    if (const transcribe_status st = pm->mel->compute(pcm, static_cast<size_t>(n_samples), pc->mel_buf, mel_n_mels, T,
-                                                      pc->n_threads);
+    if (const transcribe_status st =
+            pm->mel->compute(pcm, static_cast<size_t>(n_samples), pc->mel_buf, mel_n_mels, T, pc->n_threads);
         st != TRANSCRIBE_OK) {
         return st;
     }

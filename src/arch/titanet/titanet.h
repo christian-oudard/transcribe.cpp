@@ -18,11 +18,11 @@
 
 #pragma once
 
+#include "../../diarize/windows.h"
 #include "transcribe-backend.h"
 #include "transcribe-mel.h"
 #include "transcribe-model.h"
 #include "transcribe-session.h"
-#include "../../diarize/windows.h"
 #include "weights.h"
 
 #include <optional>
@@ -84,7 +84,7 @@ struct EmbedGraph {
     ggml_tensor *              uniform  = nullptr;  // per-frame weights, all equal
     ggml_tensor *              pool_out = nullptr;
     ggml_tensor *              emb      = nullptr;
-    std::vector<ggml_tensor *> blocks;              // per-block outputs, for parity dumps
+    std::vector<ggml_tensor *> blocks;  // per-block outputs, for parity dumps
 };
 
 EmbedGraph build_embed_graph(ggml_context * ctx, const TitanetModel & m, int T, int n_mels);
@@ -92,12 +92,12 @@ EmbedGraph build_embed_graph(ggml_context * ctx, const TitanetModel & m, int T, 
 // Window the recording, embed each window, cluster the embeddings, and put
 // the resulting who-spoke-when rows on the session. This is the whole
 // diarization path; see src/diarize/.
-transcribe_status diarize(TitanetSession *                            pc,
-                          TitanetModel *                              pm,
-                          const float *                               pcm,
-                          int                                         n_samples,
-                          int32_t                                     num_speakers,
-                          float                                       threshold,
+transcribe_status diarize(TitanetSession *                                 pc,
+                          TitanetModel *                                   pm,
+                          const float *                                    pcm,
+                          int                                              n_samples,
+                          int32_t                                          num_speakers,
+                          float                                            threshold,
                           const std::vector<transcribe::diarize::Region> & speech);
 
 extern const Arch arch;

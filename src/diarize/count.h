@@ -31,7 +31,7 @@ namespace transcribe::diarize {
 
 // A spectral clustering of the embeddings.
 struct Spectrum {
-    int32_t speakers = 1;
+    int32_t              speakers = 1;
     // Which rows of the input were used. The eigendecomposition is cubic in
     // them, and the count is a property of the recording rather than of how
     // finely it was windowed, so a few hundred evenly spaced rows stand in

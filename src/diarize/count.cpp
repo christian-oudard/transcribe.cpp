@@ -24,18 +24,15 @@ constexpr int32_t kMaxRows = 400;
 constexpr int kSweep = 12;
 
 // Unit-length copy of an evenly spaced sample of the embeddings.
-std::vector<float> sample(const float *          embeddings,
-                          int32_t                n,
-                          int32_t                dim,
-                          std::vector<int32_t> & taken) {
+std::vector<float> sample(const float * embeddings, int32_t n, int32_t dim, std::vector<int32_t> & taken) {
     const int32_t rows = std::min(n, kMaxRows);
     taken.resize(static_cast<size_t>(rows));
     std::vector<float> out(static_cast<size_t>(rows) * dim);
     for (int32_t i = 0; i < rows; ++i) {
-        const int32_t src              = static_cast<int32_t>(static_cast<int64_t>(i) * n / rows);
-        taken[static_cast<size_t>(i)]  = src;
-        const float * v                = embeddings + static_cast<size_t>(src) * dim;
-        double        sum              = 0.0;
+        const int32_t src             = static_cast<int32_t>(static_cast<int64_t>(i) * n / rows);
+        taken[static_cast<size_t>(i)] = src;
+        const float * v               = embeddings + static_cast<size_t>(src) * dim;
+        double        sum             = 0.0;
         for (int32_t k = 0; k < dim; ++k) {
             sum += static_cast<double>(v[k]) * v[k];
         }
@@ -87,12 +84,12 @@ void jacobi(std::vector<double> & a, int n, std::vector<double> & ev, std::vecto
                     a[static_cast<size_t>(k) * n + q] = s * akp + c * akq;
                 }
                 for (int k = 0; k < n; ++k) {
-                    const double apk                  = a[static_cast<size_t>(p) * n + k];
-                    const double aqk                  = a[static_cast<size_t>(q) * n + k];
-                    a[static_cast<size_t>(p) * n + k] = c * apk - s * aqk;
-                    a[static_cast<size_t>(q) * n + k] = s * apk + c * aqk;
-                    const double vkp                  = vec[static_cast<size_t>(k) * n + p];
-                    const double vkq                  = vec[static_cast<size_t>(k) * n + q];
+                    const double apk                    = a[static_cast<size_t>(p) * n + k];
+                    const double aqk                    = a[static_cast<size_t>(q) * n + k];
+                    a[static_cast<size_t>(p) * n + k]   = c * apk - s * aqk;
+                    a[static_cast<size_t>(q) * n + k]   = s * apk + c * aqk;
+                    const double vkp                    = vec[static_cast<size_t>(k) * n + p];
+                    const double vkq                    = vec[static_cast<size_t>(k) * n + q];
                     vec[static_cast<size_t>(k) * n + p] = c * vkp - s * vkq;
                     vec[static_cast<size_t>(k) * n + q] = s * vkp + c * vkq;
                 }
@@ -139,8 +136,7 @@ std::vector<double> laplacian(const std::vector<double> & affinity, int32_t rows
     }
     for (int32_t i = 0; i < rows; ++i) {
         for (int32_t j = i + 1; j < rows; ++j) {
-            const double v                       = std::max(w[static_cast<size_t>(i) * rows + j],
-                                                            w[static_cast<size_t>(j) * rows + i]);
+            const double v = std::max(w[static_cast<size_t>(i) * rows + j], w[static_cast<size_t>(j) * rows + i]);
             w[static_cast<size_t>(i) * rows + j] = v;
             w[static_cast<size_t>(j) * rows + i] = v;
         }
@@ -266,7 +262,6 @@ std::vector<int32_t> kmeans(const std::vector<double> & x, int32_t rows, int32_t
     return label;
 }
 
-
 }  // namespace
 
 // Below this an eigenvalue of the normalized Laplacian is zero rather than
@@ -367,17 +362,16 @@ Spectrum spectral(const float * embeddings, int32_t n, int32_t dim, int32_t max_
     for (int32_t i = 0; i < rows; ++i) {
         order[static_cast<size_t>(i)] = i;
     }
-    std::sort(order.begin(), order.end(), [&](int32_t a, int32_t b) {
-        return ev[static_cast<size_t>(a)] < ev[static_cast<size_t>(b)];
-    });
+    std::sort(order.begin(), order.end(),
+              [&](int32_t a, int32_t b) { return ev[static_cast<size_t>(a)] < ev[static_cast<size_t>(b)]; });
 
     const int32_t       k = out.speakers;
     std::vector<double> x(static_cast<size_t>(rows) * k, 0.0);
     for (int32_t i = 0; i < rows; ++i) {
         double norm = 0.0;
         for (int32_t f = 0; f < k; ++f) {
-            const double v                     = vec[static_cast<size_t>(i) * rows + order[static_cast<size_t>(f)]];
-            x[static_cast<size_t>(i) * k + f]  = v;
+            const double v                    = vec[static_cast<size_t>(i) * rows + order[static_cast<size_t>(f)]];
+            x[static_cast<size_t>(i) * k + f] = v;
             norm += v * v;
         }
         // Row-normalized spectral embedding (Ng, Jordan, Weiss): what matters

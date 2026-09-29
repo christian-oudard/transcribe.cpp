@@ -71,7 +71,7 @@ ggml_tensor * get_either(ggml_context * ctx,
         log_msg(TRANSCRIBE_LOG_LEVEL_ERROR, "fsmn-vad: missing tensor %s", name);
         return nullptr;
     }
-    const bool ok = (ne0 < 0 || t->ne[0] == ne0) && (ne1 < 0 || t->ne[1] == ne1);
+    const bool ok      = (ne0 < 0 || t->ne[0] == ne0) && (ne1 < 0 || t->ne[1] == ne1);
     const bool swapped = either_way && ne0 >= 0 && ne1 >= 0 && t->ne[0] == ne1 && t->ne[1] == ne0;
     if (!ok && !swapped) {
         log_msg(TRANSCRIBE_LOG_LEVEL_ERROR, "fsmn-vad: tensor %s is [%lld,%lld], want [%lld,%lld]", t->name,
@@ -113,8 +113,8 @@ transcribe_status read_fsmn_vad_hparams(const gguf_context * g, FsmnVadHParams &
     kv_str_or(g, "stt.frontend.window", "hamming", hp.fe_window);
 
     if (hp.input_dim != hp.fe_num_mels * hp.fe_lfr_m) {
-        log_msg(TRANSCRIBE_LOG_LEVEL_ERROR, "fsmn-vad: input_dim %d is not %d mels x %d stacked frames",
-                hp.input_dim, hp.fe_num_mels, hp.fe_lfr_m);
+        log_msg(TRANSCRIBE_LOG_LEVEL_ERROR, "fsmn-vad: input_dim %d is not %d mels x %d stacked frames", hp.input_dim,
+                hp.fe_num_mels, hp.fe_lfr_m);
         return TRANSCRIBE_ERR_GGUF;
     }
     if (hp.silence_pdf < 0 || hp.silence_pdf >= hp.output_dim) {
@@ -133,13 +133,13 @@ transcribe_status build_fsmn_vad_weights(ggml_context *         ctx,
     char         name[128];
     char         other[128];
 
-#define GET(dst, nm, alt, e0, e1)                                 \
-    do {                                                          \
-        std::snprintf(name, sizeof(name), "%s%s", pfx, (nm));     \
-        std::snprintf(other, sizeof(other), "%s%s", pfx, (alt));  \
-        (dst) = get_either(ctx, name, other, (e0), (e1));         \
-        if ((dst) == nullptr)                                     \
-            return TRANSCRIBE_ERR_GGUF;                           \
+#define GET(dst, nm, alt, e0, e1)                                \
+    do {                                                         \
+        std::snprintf(name, sizeof(name), "%s%s", pfx, (nm));    \
+        std::snprintf(other, sizeof(other), "%s%s", pfx, (alt)); \
+        (dst) = get_either(ctx, name, other, (e0), (e1));        \
+        if ((dst) == nullptr)                                    \
+            return TRANSCRIBE_ERR_GGUF;                          \
     } while (0)
 
     // 140 is the width of both outer affine transforms and is not otherwise a
@@ -171,12 +171,12 @@ transcribe_status build_fsmn_vad_weights(ggml_context *         ctx,
     for (int i = 0; i < hp.layers; ++i) {
         FsmnLayer & layer = w.layers[static_cast<size_t>(i)];
         char        slot[96];
-        char theirs[96];
-#define GETL(dst, suffix, alt, e0, e1)                                        \
-    do {                                                                      \
-        std::snprintf(slot, sizeof(slot), "fsmn.%d.%s", i, suffix);           \
-        std::snprintf(theirs, sizeof(theirs), "encoder.fsmn.%d.%s", i, alt);  \
-        GET(dst, slot, theirs, e0, e1);                                       \
+        char        theirs[96];
+#define GETL(dst, suffix, alt, e0, e1)                                       \
+    do {                                                                     \
+        std::snprintf(slot, sizeof(slot), "fsmn.%d.%s", i, suffix);          \
+        std::snprintf(theirs, sizeof(theirs), "encoder.fsmn.%d.%s", i, alt); \
+        GET(dst, slot, theirs, e0, e1);                                      \
     } while (0)
         GETL(layer.linear, "linear.weight", "linear.linear.weight", hp.linear_dim, hp.proj_dim);
         GETL(layer.affine_w, "affine.weight", "affine.linear.weight", hp.proj_dim, hp.linear_dim);

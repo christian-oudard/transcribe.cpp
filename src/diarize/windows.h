@@ -25,7 +25,7 @@ struct Row {
 };
 
 struct WindowConfig {
-    int32_t sample_rate = 16000;
+    int32_t sample_rate    = 16000;
     // A speaker embedding needs enough voice to be a voice, and this is the
     // measurement rather than a convention. Over two known speakers, cosine
     // distance between windows of one voice against windows of two:
@@ -40,13 +40,13 @@ struct WindowConfig {
     // exactly the two speakers. The cost is that a turn shorter than a window
     // is blurred into its neighbour, which is what a real segmenter in front
     // of this would fix.
-    float window_seconds = 3.0f;
-    float hop_seconds    = 1.5f;
+    float   window_seconds = 3.0f;
+    float   hop_seconds    = 1.5f;
     // Windows quieter than this fraction of the recording's loud parts are
     // dropped as silence. Deliberately crude: it is here so that a pause does
     // not cluster into a speaker of its own, not to be a voice activity
     // detector. A real segmenter belongs in front of this.
-    float silence_floor = 0.05f;
+    float   silence_floor  = 0.05f;
 };
 
 // One stretch the caller says is speech, in milliseconds.
@@ -62,9 +62,9 @@ struct Region {
 // and loudness is not consulted: whoever supplied the regions knows more about
 // where the speech is than an energy threshold does. Without them, the crude
 // gate above is all there is.
-std::vector<Window> speech_windows(const float *              pcm,
-                                   int32_t                    n_samples,
-                                   const WindowConfig &       config,
+std::vector<Window> speech_windows(const float *               pcm,
+                                   int32_t                     n_samples,
+                                   const WindowConfig &        config,
                                    const std::vector<Region> & regions = {});
 
 // Turn one label per window back into rows. Consecutive windows by the same

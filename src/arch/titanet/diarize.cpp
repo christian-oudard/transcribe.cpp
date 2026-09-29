@@ -32,12 +32,12 @@ namespace transcribe::titanet {
 
 namespace dz = transcribe::diarize;
 
-transcribe_status diarize(TitanetSession *              pc,
-                          TitanetModel *                pm,
-                          const float *                 pcm,
-                          int                           n_samples,
-                          int32_t                       num_speakers,
-                          float                         threshold,
+transcribe_status diarize(TitanetSession *                pc,
+                          TitanetModel *                  pm,
+                          const float *                   pcm,
+                          int                             n_samples,
+                          int32_t                         num_speakers,
+                          float                           threshold,
                           const std::vector<dz::Region> & speech) {
     dz::WindowConfig wcfg;
     wcfg.sample_rate = pm->hparams.fe_sample_rate;
@@ -94,8 +94,8 @@ transcribe_status diarize(TitanetSession *              pc,
     // long.
     const std::vector<float> even(static_cast<size_t>(T), 1.0f / static_cast<float>(T));
 
-    const int32_t      dim = pm->hparams.embedding_size;
-    std::vector<float> embeddings(windows.size() * static_cast<size_t>(dim));
+    const int32_t           dim = pm->hparams.embedding_size;
+    std::vector<float>      embeddings(windows.size() * static_cast<size_t>(dim));
     std::vector<dz::Window> embedded;
     embedded.reserve(windows.size());
 
@@ -106,8 +106,8 @@ transcribe_status diarize(TitanetSession *              pc,
         if (w.to - w.from != width) {
             continue;  // The short tail; see above.
         }
-        if (const transcribe_status st = pm->mel->compute(pcm + w.from, static_cast<size_t>(width), mel, mel_n_mels, T,
-                                                          pc->n_threads);
+        if (const transcribe_status st =
+                pm->mel->compute(pcm + w.from, static_cast<size_t>(width), mel, mel_n_mels, T, pc->n_threads);
             st != TRANSCRIBE_OK) {
             return st;
         }

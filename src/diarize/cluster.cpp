@@ -4,7 +4,6 @@
 #include "cluster.h"
 
 #include "count.h"
-
 #include "third_party/fastcluster/fastcluster.h"
 
 #include <cmath>
@@ -64,12 +63,9 @@ void renumber_by_appearance(std::vector<int32_t> & labels) {
 // them; the rest of the recording is attributed by which of the groups it
 // sounds most like, which is cheap and does not need the sample to have seen
 // that particular window.
-std::vector<int32_t> by_nearest_centre(const std::vector<float> & unit,
-                                       int32_t                    n,
-                                       int32_t                    dim,
-                                       const Spectrum &           s) {
-    const int32_t      k = std::max(1, s.speakers);
-    std::vector<double> centre(static_cast<size_t>(k) * dim, 0.0);
+std::vector<int32_t> by_nearest_centre(const std::vector<float> & unit, int32_t n, int32_t dim, const Spectrum & s) {
+    const int32_t        k = std::max(1, s.speakers);
+    std::vector<double>  centre(static_cast<size_t>(k) * dim, 0.0);
     std::vector<int32_t> held(static_cast<size_t>(k), 0);
     for (size_t i = 0; i < s.sampled.size(); ++i) {
         const int32_t c = s.labels[i];
@@ -135,12 +131,11 @@ std::vector<int32_t> cluster(const float * embeddings, int32_t n, int32_t dim, c
     // the assignment in the same space. The agglomerative path below is what
     // is left for a caller who supplies a distance instead.
     if (config.num_speakers > 0 || config.estimate_count) {
-        const Spectrum s      = spectral(embeddings, n, dim, config.max_speakers, config.num_speakers);
+        const Spectrum       s      = spectral(embeddings, n, dim, config.max_speakers, config.num_speakers);
         std::vector<int32_t> labels = by_nearest_centre(unit, n, dim, s);
         renumber_by_appearance(labels);
         return labels;
     }
-
 
     // Condensed upper triangle, the layout fastcluster takes: pair (i, j) for
     // i < j, in row order.

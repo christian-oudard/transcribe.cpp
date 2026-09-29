@@ -64,14 +64,14 @@ struct TitanetHParams {
 // One [depthwise, pointwise, batchnorm] group inside a block. A block runs
 // `repeat` of these; every one but the last is followed by ReLU.
 struct TitanetRepeat {
-    ggml_tensor * dw     = nullptr;  // [K, 1, C_in]
-    ggml_tensor * pw     = nullptr;  // [1, C_in, C_out]
-    ggml_tensor * bn_w   = nullptr;  // [C_out]
-    ggml_tensor * bn_b   = nullptr;
-    ggml_tensor * bn_rm  = nullptr;
-    ggml_tensor * bn_rv  = nullptr;
-    ggml_tensor * scale  = nullptr;  // folded BN, filled at load
-    ggml_tensor * shift  = nullptr;
+    ggml_tensor * dw    = nullptr;  // [K, 1, C_in]
+    ggml_tensor * pw    = nullptr;  // [1, C_in, C_out]
+    ggml_tensor * bn_w  = nullptr;  // [C_out]
+    ggml_tensor * bn_b  = nullptr;
+    ggml_tensor * bn_rm = nullptr;
+    ggml_tensor * bn_rv = nullptr;
+    ggml_tensor * scale = nullptr;  // folded BN, filled at load
+    ggml_tensor * shift = nullptr;
 };
 
 struct TitanetBlock {
@@ -89,7 +89,7 @@ struct TitanetBlock {
     ggml_tensor * res_bn_rm = nullptr;
     ggml_tensor * res_bn_rv = nullptr;
     ggml_tensor * res_scale = nullptr;  // folded BN, filled at load
-    ggml_tensor * res_shift  = nullptr;
+    ggml_tensor * res_shift = nullptr;
 };
 
 struct TitanetWeights {
@@ -97,16 +97,16 @@ struct TitanetWeights {
 
     // Attentive statistics pooling. attn_0 takes [x, mean, std] (3 * C_in)
     // to 128, attn_1 takes 128 back to C_in, one softmax weight per channel.
-    ggml_tensor * pool_attn0_w    = nullptr;  // [1, 3 * feat_out, 128]
-    ggml_tensor * pool_attn0_b    = nullptr;  // [128]
-    ggml_tensor * pool_bn_w       = nullptr;  // [128]
-    ggml_tensor * pool_bn_b       = nullptr;
-    ggml_tensor * pool_bn_rm      = nullptr;
-    ggml_tensor * pool_bn_rv      = nullptr;
-    ggml_tensor * pool_bn_scale   = nullptr;  // folded BN, filled at load
-    ggml_tensor * pool_bn_shift   = nullptr;
-    ggml_tensor * pool_attn1_w    = nullptr;  // [1, 128, feat_out]
-    ggml_tensor * pool_attn1_b    = nullptr;  // [feat_out]
+    ggml_tensor * pool_attn0_w  = nullptr;  // [1, 3 * feat_out, 128]
+    ggml_tensor * pool_attn0_b  = nullptr;  // [128]
+    ggml_tensor * pool_bn_w     = nullptr;  // [128]
+    ggml_tensor * pool_bn_b     = nullptr;
+    ggml_tensor * pool_bn_rm    = nullptr;
+    ggml_tensor * pool_bn_rv    = nullptr;
+    ggml_tensor * pool_bn_scale = nullptr;  // folded BN, filled at load
+    ggml_tensor * pool_bn_shift = nullptr;
+    ggml_tensor * pool_attn1_w  = nullptr;  // [1, 128, feat_out]
+    ggml_tensor * pool_attn1_b  = nullptr;  // [feat_out]
 
     // Embedding: BatchNorm over the 6144 pooled statistics, then Linear.
     ggml_tensor * emb_bn_w     = nullptr;  // [2 * feat_out]

@@ -7,8 +7,8 @@
 
 #include "transcribe.h"
 #include "transcribe/parakeet.h"
-#include "transcribe/voxtral_realtime.h"
 #include "transcribe/titanet.h"
+#include "transcribe/voxtral_realtime.h"
 #include "transcribe/whisper.h"
 #include "wav.h"
 
@@ -263,8 +263,8 @@ struct cli_args {
 
     // Speaker diarization toggle (moss / granite-plus). Unset = library
     // default (OFF). --diarize / --no-diarize set this.
-    bool    diarize      = true;
-    bool    diarize_set  = false;
+    bool        diarize           = true;
+    bool        diarize_set       = false;
     int32_t     num_speakers      = 0;
     float       speaker_threshold = 0.0f;
     std::string speech_file;

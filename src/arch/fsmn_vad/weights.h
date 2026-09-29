@@ -24,12 +24,12 @@ struct ggml_tensor;
 namespace transcribe::fsmn_vad {
 
 struct FsmnVadHParams {
-    int32_t layers     = 0;  // 4
-    int32_t input_dim  = 0;  // 400 = 80 mels x 5 stacked frames
-    int32_t linear_dim = 0;  // 250
-    int32_t proj_dim   = 0;  // 128
-    int32_t lorder     = 0;  // 20 frames of memory, left only
-    int32_t output_dim = 0;  // 248 HMM states
+    int32_t layers      = 0;  // 4
+    int32_t input_dim   = 0;  // 400 = 80 mels x 5 stacked frames
+    int32_t linear_dim  = 0;  // 250
+    int32_t proj_dim    = 0;  // 128
+    int32_t lorder      = 0;  // 20 frames of memory, left only
+    int32_t output_dim  = 0;  // 248 HMM states
     // Which output means silence. A property of the checkpoint rather than of
     // the architecture, so it is read rather than assumed.
     int32_t silence_pdf = 0;
@@ -45,9 +45,7 @@ struct FsmnVadHParams {
 
     // Milliseconds per frame, which the rows are measured in. LFR with n=1
     // keeps the frame rate of the fbank, so this is the hop.
-    double frame_ms() const {
-        return (fe_sample_rate > 0) ? 1000.0 * fe_hop_length * fe_lfr_n / fe_sample_rate : 0.0;
-    }
+    double frame_ms() const { return (fe_sample_rate > 0) ? 1000.0 * fe_hop_length * fe_lfr_n / fe_sample_rate : 0.0; }
 };
 
 // One FSMN layer: project down, remember the last lorder frames, project back.

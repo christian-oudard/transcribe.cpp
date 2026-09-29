@@ -58,14 +58,18 @@ int main() {
     // A recording shorter than one window is still one window: a short answer
     // is a speaker turn.
     {
-        std::vector<float> pcm(static_cast<size_t>(rate), 0.5f);
+        std::vector<float>  pcm(static_cast<size_t>(rate), 0.5f);
         std::vector<Window> windows = speech_windows(pcm.data(), static_cast<int32_t>(pcm.size()), cfg);
         check(windows.size() == 1 && windows[0].from == 0, "a short clip is one window");
     }
 
     // Consecutive windows by one speaker merge into a row that spans them.
     {
-        std::vector<Window>  w      = { { 0, 48000 }, { 24000, 72000 }, { 48000, 96000 } };
+        std::vector<Window> w = {
+            { 0,     48000 },
+            { 24000, 72000 },
+            { 48000, 96000 }
+        };
         std::vector<int32_t> labels = { 0, 0, 0 };
         std::vector<Row>     rows   = rows_from_labels(w, labels, rate);
         check(rows.size() == 1, "one speaker across three windows is one row");
@@ -75,7 +79,11 @@ int main() {
     // A change of speaker closes the row, and the rows meet rather than
     // overlap even though the windows do.
     {
-        std::vector<Window>  w      = { { 0, 48000 }, { 24000, 72000 }, { 48000, 96000 } };
+        std::vector<Window> w = {
+            { 0,     48000 },
+            { 24000, 72000 },
+            { 48000, 96000 }
+        };
         std::vector<int32_t> labels = { 0, 1, 1 };
         std::vector<Row>     rows   = rows_from_labels(w, labels, rate);
         check(rows.size() == 2, "a change of speaker closes the row");
@@ -86,7 +94,10 @@ int main() {
     // A gap in the windows -- silence the windows were dropped from -- closes
     // the row even for one speaker.
     {
-        std::vector<Window>  w      = { { 0, 48000 }, { 160000, 208000 } };
+        std::vector<Window> w = {
+            { 0,      48000  },
+            { 160000, 208000 }
+        };
         std::vector<int32_t> labels = { 0, 0 };
         std::vector<Row>     rows   = rows_from_labels(w, labels, rate);
         check(rows.size() == 2, "silence between two turns by one person is two rows");
@@ -94,7 +105,9 @@ int main() {
 
     // Mismatched inputs produce nothing rather than reading past an end.
     {
-        std::vector<Window>  w      = { { 0, 48000 } };
+        std::vector<Window> w = {
+            { 0, 48000 }
+        };
         std::vector<int32_t> labels = { 0, 1 };
         check(rows_from_labels(w, labels, rate).empty(), "a label per window, or no rows");
     }
@@ -103,8 +116,10 @@ int main() {
     // speech is knows better than an energy threshold, and the whole point is
     // to keep audible non-speech out.
     {
-        std::vector<float>  pcm = alternating(rate, 6, 4);  // loud, quiet, loud, quiet
-        std::vector<Region> speech = { { 0, 6000 } };       // only the first block
+        std::vector<float>  pcm    = alternating(rate, 6, 4);  // loud, quiet, loud, quiet
+        std::vector<Region> speech = {
+            { 0, 6000 }
+        };  // only the first block
         std::vector<Window> windows = speech_windows(pcm.data(), static_cast<int32_t>(pcm.size()), cfg, speech);
         check(!windows.empty(), "windows are taken from inside the region");
         for (const Window & w : windows) {
@@ -116,8 +131,10 @@ int main() {
     // A loud stretch the caller did not call speech is dropped, which an
     // energy gate would have kept. This is the case the regions exist for.
     {
-        std::vector<float>  pcm = alternating(rate, 6, 2);   // loud, quiet
-        std::vector<Region> speech = { { 12000, 18000 } };   // past the end of the audio
+        std::vector<float>  pcm    = alternating(rate, 6, 2);  // loud, quiet
+        std::vector<Region> speech = {
+            { 12000, 18000 }
+        };  // past the end of the audio
         check(speech_windows(pcm.data(), static_cast<int32_t>(pcm.size()), cfg, speech).empty(),
               "loud audio outside every region is not embedded");
     }

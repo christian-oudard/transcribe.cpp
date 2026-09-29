@@ -978,9 +978,9 @@ transcribe_status run_one_shot_inner(ParakeetSession *             pc,
         log_msg(TRANSCRIBE_LOG_LEVEL_ERROR, "parakeet run: model has no MelFrontend (load skipped?)");
         return TRANSCRIBE_ERR_INVALID_ARG;
     }
-    const int64_t t_mel_start  = ggml_time_us();
-    int           mel_n_mels   = 0;
-    int           mel_n_frames = 0;
+    const int64_t         t_mel_start  = ggml_time_us();
+    int                   mel_n_mels   = 0;
+    int                   mel_n_frames = 0;
     // The caller's statistics when it has them, which is how the pieces of one
     // recording are normalized against the same numbers rather than each
     // against itself; see transcribe_run_params::norm_mean.
@@ -990,9 +990,9 @@ transcribe_status run_one_shot_inner(ParakeetSession *             pc,
         given.mean.assign(params->norm_mean, params->norm_mean + params->norm_n_mels);
         given.stddev.assign(params->norm_stddev, params->norm_stddev + params->norm_n_mels);
     }
-    if (const transcribe_status mst = pm->mel->compute(pcm, static_cast<size_t>(n_samples), pc->mel_buf, mel_n_mels,
-                                                       mel_n_frames, pc->n_threads, 0,
-                                                       given.mean.empty() ? nullptr : &given);
+    if (const transcribe_status mst =
+            pm->mel->compute(pcm, static_cast<size_t>(n_samples), pc->mel_buf, mel_n_mels, mel_n_frames, pc->n_threads,
+                             0, given.mean.empty() ? nullptr : &given);
         mst != TRANSCRIBE_OK) {
         log_msg(TRANSCRIBE_LOG_LEVEL_ERROR, "parakeet run: MelFrontend::compute failed (%s)",
                 transcribe_status_string(mst));

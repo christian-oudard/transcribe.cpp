@@ -20,17 +20,17 @@ namespace transcribe::diarize {
 
 struct RegionRules {
     // Milliseconds per frame of the probability curve.
-    double frame_ms = 10.0;
+    double  frame_ms       = 10.0;
     // Above this a frame is speech. Halfway is where the detector's own
     // decision sits; the smoothing below is where the real policy lives.
-    float threshold = 0.5f;
+    float   threshold      = 0.5f;
     // A gap shorter than this does not end a region. A breath inside a
     // sentence is not silence, and splitting there produces two regions that
     // every consumer has to put back together.
     int64_t min_silence_ms = 300;
     // A region shorter than this is not one. A single frame over the
     // threshold is a detector twitching, not somebody talking.
-    int64_t min_speech_ms = 100;
+    int64_t min_speech_ms  = 100;
 };
 
 // Speech regions from `n` per-frame probabilities, in milliseconds, ordered

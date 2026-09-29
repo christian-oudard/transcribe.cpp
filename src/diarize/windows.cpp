@@ -46,8 +46,8 @@ std::vector<Window> speech_windows(const float *               pcm,
         std::vector<bool> speech(static_cast<size_t>(n_samples / step + 1), false);
         for (const Region & r : regions) {
             const int64_t from = std::max<int64_t>(0, r.t0_ms) * config.sample_rate / 1000 / step;
-            const int64_t to   = std::min<int64_t>(r.t1_ms, static_cast<int64_t>(n_samples) * 1000 / config.sample_rate)
-                               * config.sample_rate / 1000 / step;
+            const int64_t to = std::min<int64_t>(r.t1_ms, static_cast<int64_t>(n_samples) * 1000 / config.sample_rate) *
+                               config.sample_rate / 1000 / step;
             for (int64_t i = from; i < to && i < static_cast<int64_t>(speech.size()); ++i) {
                 speech[static_cast<size_t>(i)] = true;
             }
@@ -106,7 +106,7 @@ std::vector<Row> rows_from_labels(const std::vector<Window> &  windows,
         // Windows overlap, so "adjacent" means the next one starts no later
         // than this one ends. A real gap is silence the windows were dropped
         // from, and the row ends there.
-        const bool adjacent = (i < windows.size()) && (windows[i].from <= windows[i - 1].to);
+        const bool adjacent     = (i < windows.size()) && (windows[i].from <= windows[i - 1].to);
         if (same_speaker && adjacent) {
             continue;
         }

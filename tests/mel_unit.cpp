@@ -242,8 +242,8 @@ void test_shared_norm_stats() {
 
     // Compare away from the edges, where the piece's own reflect padding
     // legitimately differs from the middle of a longer clip.
-    const int    at    = n_frames - p_frames;
-    double       worst = 0.0;
+    const int at    = n_frames - p_frames;
+    double    worst = 0.0;
     for (int m = 0; m < n_mels; ++m) {
         for (int t = 20; t < p_frames - 20; ++t) {
             const double a = whole[static_cast<size_t>(m) * n_frames + at + t];

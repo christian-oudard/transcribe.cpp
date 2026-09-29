@@ -39,7 +39,11 @@ int main() {
     // One stretch of speech is one region, and its edges are where the
     // probability crossed.
     {
-        std::vector<float> c = curve({ { 0.1f, 50 }, { 0.9f, 100 }, { 0.1f, 50 } });
+        std::vector<float> c = curve({
+            { 0.1f, 50  },
+            { 0.9f, 100 },
+            { 0.1f, 50  }
+        });
         auto               r = regions_from_frames(c.data(), static_cast<int32_t>(c.size()), rules);
         check(r.size() == 1, "one stretch is one region");
         if (r.size() == 1) {
@@ -49,21 +53,33 @@ int main() {
 
     // A breath inside a sentence is not the end of a turn.
     {
-        std::vector<float> c = curve({ { 0.9f, 100 }, { 0.1f, 20 }, { 0.9f, 100 } });
+        std::vector<float> c = curve({
+            { 0.9f, 100 },
+            { 0.1f, 20  },
+            { 0.9f, 100 }
+        });
         auto               r = regions_from_frames(c.data(), static_cast<int32_t>(c.size()), rules);
         check(r.size() == 1, "a 200 ms gap does not split a region");
     }
 
     // A pause between speakers is.
     {
-        std::vector<float> c = curve({ { 0.9f, 100 }, { 0.1f, 60 }, { 0.9f, 100 } });
+        std::vector<float> c = curve({
+            { 0.9f, 100 },
+            { 0.1f, 60  },
+            { 0.9f, 100 }
+        });
         auto               r = regions_from_frames(c.data(), static_cast<int32_t>(c.size()), rules);
         check(r.size() == 2, "a 600 ms gap splits a region");
     }
 
     // A single frame over the threshold is a detector twitching.
     {
-        std::vector<float> c = curve({ { 0.1f, 50 }, { 0.9f, 3 }, { 0.1f, 50 } });
+        std::vector<float> c = curve({
+            { 0.1f, 50 },
+            { 0.9f, 3  },
+            { 0.1f, 50 }
+        });
         check(regions_from_frames(c.data(), static_cast<int32_t>(c.size()), rules).empty(),
               "a 30 ms blip is not speech");
     }
@@ -71,7 +87,10 @@ int main() {
     // Speech that runs to the end of the audio is closed by the end of the
     // audio, however short the trailing silence.
     {
-        std::vector<float> c = curve({ { 0.1f, 50 }, { 0.9f, 100 } });
+        std::vector<float> c = curve({
+            { 0.1f, 50  },
+            { 0.9f, 100 }
+        });
         auto               r = regions_from_frames(c.data(), static_cast<int32_t>(c.size()), rules);
         check(r.size() == 1, "the last region is closed at the end of the clip");
         if (r.size() == 1) {
@@ -81,7 +100,9 @@ int main() {
 
     // Silence throughout is no regions, not one empty one.
     {
-        std::vector<float> c = curve({ { 0.05f, 200 } });
+        std::vector<float> c = curve({
+            { 0.05f, 200 }
+        });
         check(regions_from_frames(c.data(), static_cast<int32_t>(c.size()), rules).empty(), "silence is no regions");
     }
 

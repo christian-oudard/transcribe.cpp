@@ -14,7 +14,9 @@ std::vector<Region> regions_from_frames(const float * speech, int32_t n, const R
     const int64_t min_silence = static_cast<int64_t>(rules.min_silence_ms / rules.frame_ms);
     const int64_t min_speech  = static_cast<int64_t>(rules.min_speech_ms / rules.frame_ms);
 
-    const auto ms = [&](int64_t frame) { return static_cast<int64_t>(std::llround(frame * rules.frame_ms)); };
+    const auto ms = [&](int64_t frame) {
+        return static_cast<int64_t>(std::llround(frame * rules.frame_ms));
+    };
 
     int64_t start = -1;  // first frame of the region being built
     int64_t quiet = 0;   // consecutive frames below the threshold since then

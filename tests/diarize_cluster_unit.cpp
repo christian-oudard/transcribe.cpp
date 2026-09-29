@@ -4,16 +4,15 @@
 // the two cut policies and the numbering, none of which know what a voice is.
 
 #include "diarize/cluster.h"
-
 #include "diarize/count.h"
 
 #include <cmath>
-#include <set>
 #include <cstdio>
+#include <set>
 #include <vector>
 
-using transcribe::diarize::ClusterConfig;
 using transcribe::diarize::cluster;
+using transcribe::diarize::ClusterConfig;
 using transcribe::diarize::estimate_speakers;
 
 // The cut-at-a-distance path. Most of what follows tests the metric and the
@@ -75,9 +74,9 @@ int main() {
         add_group(emb, dim, 3, 3, 0.05f);
         add_group(emb, dim, 6, 3, 0.05f);
 
-        ClusterConfig cfg = by_distance();
-        cfg.num_speakers  = 2;
-        std::vector<int32_t> labels = cluster(emb.data(), 10, dim, cfg);
+        ClusterConfig cfg            = by_distance();
+        cfg.num_speakers             = 2;
+        std::vector<int32_t> labels  = cluster(emb.data(), 10, dim, cfg);
         int                  seen[3] = { 0, 0, 0 };
         for (int32_t l : labels) {
             check(l >= 0 && l < 2, "labels stay inside the requested count");
@@ -103,8 +102,8 @@ int main() {
     // segmenter found no speech in at all.
     {
         std::vector<float> one(static_cast<size_t>(dim), 0.0f);
-        one[0]                          = 1.0f;
-        std::vector<int32_t> single     = cluster(one.data(), 1, dim, by_distance());
+        one[0]                      = 1.0f;
+        std::vector<int32_t> single = cluster(one.data(), 1, dim, by_distance());
         check(single.size() == 1 && single[0] == 0, "a single window is speaker 0");
         check(cluster(one.data(), 0, dim, by_distance()).empty(), "no windows, no labels");
     }

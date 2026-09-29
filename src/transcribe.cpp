@@ -1068,8 +1068,7 @@ static ggml_backend_dev_t device_from_handle(transcribe_device_t device) {
 // device's index among that backend's own devices, which is how such entry
 // points count. Null when the device is foreign or the backend lacks the
 // entry point, so a backend that does not report something needs no case.
-template <typename Fn>
-static Fn backend_device_proc(transcribe_device_t device, const char * name, int & local) {
+template <typename Fn> static Fn backend_device_proc(transcribe_device_t device, const char * name, int & local) {
     ggml_backend_dev_t dev = device_from_handle(device);
     if (dev == nullptr) {
         return nullptr;
@@ -1099,7 +1098,7 @@ static uint64_t transcribe_backend_device_compiled_kernels_impl(transcribe_devic
 
 static const char * transcribe_backend_device_compiled_kernel_name_impl(transcribe_device_t device, uint64_t kernel) {
     int  local = 0;
-    auto fn    = backend_device_proc<const char * (*)(int, size_t)>(
+    auto fn    = backend_device_proc<const char * (*) (int, size_t)>(
         device, "ggml_backend_vk_get_device_compiled_pipeline_name", local);
     return fn == nullptr ? nullptr : fn(local, static_cast<size_t>(kernel));
 }
@@ -3235,8 +3234,7 @@ extern "C" uint64_t transcribe_backend_device_compiled_kernels(transcribe_device
 }
 
 extern "C" const char * transcribe_backend_device_compiled_kernel_name(transcribe_device_t device, uint64_t kernel) {
-    return api_guard_value("transcribe_backend_device_compiled_kernel_name",
-                           static_cast<const char *>(nullptr),
+    return api_guard_value("transcribe_backend_device_compiled_kernel_name", static_cast<const char *>(nullptr),
                            [&] { return transcribe_backend_device_compiled_kernel_name_impl(device, kernel); });
 }
 
