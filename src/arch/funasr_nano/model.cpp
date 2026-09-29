@@ -13,12 +13,14 @@
 #include "transcribe-arch.h"
 #include "transcribe-batch-util.h"
 #include "transcribe-debug.h"
+#include "transcribe-decode-budget.h"
 #include "transcribe-flash-policy.h"
 #include "transcribe-kaldi-fbank.h"
 #include "transcribe-load-common.h"
 #include "transcribe-loader.h"
 #include "transcribe-log.h"
 #include "transcribe-meta.h"
+#include "transcribe-repetition-guard.h"
 #include "weights.h"
 
 #include <algorithm>
@@ -46,14 +48,6 @@ static_assert(std::is_base_of_v<transcribe_session, FunAsrNanoSession>);
 FunAsrNanoSession::~FunAsrNanoSession() {
     kv_cache.free();
     kv_cache_batch.free();
-    if (sched != nullptr) {
-        safe_sched_free(sched);
-        sched = nullptr;
-    }
-    if (compute_ctx != nullptr) {
-        ggml_free(compute_ctx);
-        compute_ctx = nullptr;
-    }
 }
 
 FunAsrNanoModel::~FunAsrNanoModel() {
@@ -88,8 +82,8 @@ constexpr const char k_default_variant[] = "fun-asr-nano-2512";
 // transcribe_was_truncated().
 // ---------------------------------------------------------------------------
 
-// Per-run generation budget.
-constexpr int k_max_new = 256;
+// Generation reserve: what the input gate keeps free, and the decode-budget floor.
+constexpr int k_gen_reserve = 256;
 
 // Effective decoder context ceiling, in tokens: the model's trained maximum,
 // optionally lowered — never raised — by the caller's session n_ctx knob.
@@ -111,7 +105,7 @@ int64_t funasr_nano_max_audio_ms(const FunAsrNanoHParams & hp) {
         return 0;
     }
     constexpr int k_prompt_overhead = 48;  // chat affixes; advisory
-    const int     max_audio_tokens  = hp.dec_max_position_embeddings - k_prompt_overhead - k_max_new;
+    const int     max_audio_tokens  = hp.dec_max_position_embeddings - k_prompt_overhead - k_gen_reserve;
     if (max_audio_tokens <= 0) {
         return 0;
     }
@@ -317,7 +311,7 @@ transcribe_status load(Loader & loader, const transcribe_model_load_params * par
         m->limits.has_context_cap    = true;
         m->limits.model_max_ctx      = m->hparams.dec_max_position_embeddings;
         m->limits.prompt_overhead    = 48;
-        m->limits.gen_reserve        = k_max_new;
+        m->limits.gen_reserve        = k_gen_reserve;
         m->limits.ms_per_audio_token = static_cast<double>(folds) * m->hparams.fe_lfr_n * m->hparams.fe_hop_length *
                                        1000.0 / m->hparams.fe_sample_rate;
         m->limits.kv_elems_per_ctx_token =
@@ -354,7 +348,7 @@ transcribe_status load(Loader & loader, const transcribe_model_load_params * par
     }
 
     const transcribe_backend_request backend_req = (params != nullptr) ? params->backend : TRANSCRIBE_BACKEND_AUTO;
-    if (auto st = transcribe::load_common::init_backends(backend_req, (params != nullptr) ? params->gpu_device : 0,
+    if (auto st = transcribe::load_common::init_backends(backend_req, (params != nullptr) ? params->device : nullptr,
                                                          "funasr_nano", m->plan);
         st != TRANSCRIBE_OK) {
         gguf_free(gguf_data);
@@ -367,7 +361,7 @@ transcribe_status load(Loader & loader, const transcribe_model_load_params * par
     if (weights_buffer == nullptr) {
         gguf_free(gguf_data);
         log_msg(TRANSCRIBE_LOG_LEVEL_ERROR, "funasr_nano: ggml_backend_alloc_ctx_tensors failed");
-        return TRANSCRIBE_ERR_GGUF;
+        return TRANSCRIBE_ERR_OOM;
     }
     m->backend_buffer = weights_buffer;
     ggml_backend_buffer_set_usage(weights_buffer, GGML_BACKEND_BUFFER_USAGE_WEIGHTS);
@@ -387,10 +381,12 @@ transcribe_status load(Loader & loader, const transcribe_model_load_params * par
         for (auto & b : m->weights.dec_blocks) {
             entries.push_back({ b.ffn_gate_w, b.ffn_up_w, &b.ffn_gate_up_w });
         }
-        if (!transcribe::causal_lm::pack_gate_up(m->plan.primary, m->hparams.dec_hidden, m->hparams.dec_intermediate,
-                                                 entries, m->packed_gate_up, "funasr_nano")) {
+        if (const transcribe_status st =
+                transcribe::causal_lm::pack_gate_up(m->plan.primary, m->hparams.dec_hidden, m->hparams.dec_intermediate,
+                                                    entries, m->packed_gate_up, "funasr_nano");
+            st != TRANSCRIBE_OK) {
             m->packed_gate_up.free();
-            return TRANSCRIBE_ERR_GGUF;
+            return st;
         }
     }
 
@@ -515,7 +511,7 @@ transcribe_status run(transcribe_session *          session,
         cc->compute_ctx = ggml_init(ip);
         if (cc->compute_ctx == nullptr) {
             log_msg(TRANSCRIBE_LOG_LEVEL_ERROR, "funasr_nano run: ggml_init for compute_ctx failed");
-            return TRANSCRIBE_ERR_GGUF;
+            return TRANSCRIBE_ERR_OOM;
         }
     }
 
@@ -531,7 +527,7 @@ transcribe_status run(transcribe_session *          session,
                                            /*op_offload=*/true);
         if (cc->sched == nullptr) {
             log_msg(TRANSCRIBE_LOG_LEVEL_ERROR, "funasr_nano run: ggml_backend_sched_new failed");
-            return TRANSCRIBE_ERR_GGUF;
+            return TRANSCRIBE_ERR_BACKEND;
         }
     }
     ggml_backend_sched_reset(cc->sched);
@@ -551,7 +547,7 @@ transcribe_status run(transcribe_session *          session,
     const int64_t t_enc_start = ggml_time_us();
     if (const ggml_status gs = ggml_backend_sched_graph_compute(cc->sched, eb.graph); gs != GGML_STATUS_SUCCESS) {
         log_msg(TRANSCRIBE_LOG_LEVEL_ERROR, "funasr_nano run: encoder graph compute failed (%d)", static_cast<int>(gs));
-        return TRANSCRIBE_ERR_GGUF;
+        return TRANSCRIBE_ERR_BACKEND;
     }
     cc->t_encode_us = ggml_time_us() - t_enc_start;
 
@@ -603,6 +599,9 @@ transcribe_status run(transcribe_session *          session,
         ip.mem_buffer   = nullptr;
         ip.no_alloc     = true;
         cc->compute_ctx = ggml_init(ip);
+        if (cc->compute_ctx == nullptr) {
+            return TRANSCRIBE_ERR_OOM;
+        }
     }
 
     AdaptorBuild ab = build_adaptor_graph(cc->compute_ctx, cm->weights, hp, T_lfr);
@@ -619,7 +618,7 @@ transcribe_status run(transcribe_session *          session,
 
     if (const ggml_status gs = ggml_backend_sched_graph_compute(cc->sched, ab.graph); gs != GGML_STATUS_SUCCESS) {
         log_msg(TRANSCRIBE_LOG_LEVEL_ERROR, "funasr_nano run: adaptor graph compute failed (%d)", static_cast<int>(gs));
-        return TRANSCRIBE_ERR_GGUF;
+        return TRANSCRIBE_ERR_BACKEND;
     }
 
     try_dump("adaptor.linear1.out", ab.dumps.linear1_out, "adaptor.linear1");
@@ -674,23 +673,27 @@ transcribe_status run(transcribe_session *          session,
     // fixed by the input length, so reject an over-length clip here, before
     // KV alloc / prefill / decode, instead of walling at a fixed size.
     const int ceiling = funasr_nano_context_ceiling(cc->n_ctx, hp);
-    if (T_prompt + k_max_new > ceiling) {
+    if (T_prompt + k_gen_reserve > ceiling) {
         transcribe::log_msg(TRANSCRIBE_LOG_LEVEL_ERROR,
                             "funasr_nano run: input too long — %d audio + %d prompt tokens "
                             "leave no room for output within the %d-token context (need %d). "
                             "Shorten the audio (see transcribe_capabilities.max_audio_ms) or "
                             "split it into segments.",
-                            T_audio, prefix_len + suffix_len, ceiling, T_prompt + k_max_new);
+                            T_audio, prefix_len + suffix_len, ceiling, T_prompt + k_gen_reserve);
         return TRANSCRIBE_ERR_INPUT_TOO_LONG;
     }
 
+    const int max_new =
+        transcribe::pick_decode_budget(transcribe::predict_transcript_tokens(T_audio, cm->limits.ms_per_audio_token),
+                                       k_gen_reserve, T_prompt, ceiling);
+
     // ---- KV cache init (grow-to-fit, clamped to the context ceiling) ----
-    // Size to hold the prompt plus the generation budget, rounded up to a
-    // power of two (the step graph's attention width wants pow2 for the fast
-    // flash-attn path). The cache grows across runs as audio length demands;
-    // a pre-allocated smaller cache is freed and re-allocated.
+    // Size to hold the prompt plus the decode budget, rounded up to a power of
+    // two (the step graph's attention width wants pow2 for the fast flash-attn
+    // path). The cache grows across runs as audio length demands; a
+    // pre-allocated smaller cache is freed and re-allocated.
     int want_n_ctx = 1024;
-    while (want_n_ctx < T_prompt + k_max_new) {
+    while (want_n_ctx < T_prompt + max_new) {
         want_n_ctx *= 2;
     }
     if (want_n_ctx > ceiling) {
@@ -786,7 +789,7 @@ transcribe_status run(transcribe_session *          session,
 
     if (const ggml_status gs = ggml_backend_sched_graph_compute(cc->sched, pb.graph); gs != GGML_STATUS_SUCCESS) {
         log_msg(TRANSCRIBE_LOG_LEVEL_ERROR, "funasr_nano run: prefill graph compute failed (%d)", static_cast<int>(gs));
-        return TRANSCRIBE_ERR_GGUF;
+        return TRANSCRIBE_ERR_BACKEND;
     }
 
     cc->kv_cache.n    = T_prompt;
@@ -825,7 +828,6 @@ transcribe_status run(transcribe_session *          session,
 
     // ---- Step loop ----
     const int32_t eos_id   = hp.eos_token_id;
-    const int     max_new  = k_max_new;
     int           cur_past = T_prompt;
 
     // Static step-graph shape: T_prompt prefilled + up to max_new generated.
@@ -849,6 +851,9 @@ transcribe_status run(transcribe_session *          session,
         ip.mem_buffer   = nullptr;
         ip.no_alloc     = true;
         cc->compute_ctx = ggml_init(ip);
+        if (cc->compute_ctx == nullptr) {
+            return TRANSCRIBE_ERR_OOM;
+        }
     }
     StepBuild sb = build_step_graph(cc->compute_ctx, cm->weights, hp, cc->kv_cache, max_n_kv, cc->decoder_use_flash);
     if (sb.graph == nullptr || sb.out == nullptr) {
@@ -870,6 +875,7 @@ transcribe_status run(transcribe_session *          session,
     // (prefill = 1st call, iter K = (K+2)th call), so dump when n_steps == 7.
     const int gen_dump_step = 7;
     int       n_steps       = 0;
+    bool      repeating     = false;
     while (next_tok != eos_id && static_cast<int32_t>(generated_ids.size()) < max_new && cur_past + 1 <= max_n_kv) {
         ggml_backend_tensor_set(sb.input_id_in, &next_tok, 0, sizeof(int32_t));
         const int32_t pos_val = cur_past;
@@ -887,7 +893,7 @@ transcribe_status run(transcribe_session *          session,
         if (const ggml_status gs = ggml_backend_sched_graph_compute(cc->sched, sb.graph); gs != GGML_STATUS_SUCCESS) {
             log_msg(TRANSCRIBE_LOG_LEVEL_ERROR, "funasr_nano run: step graph compute failed (%d)",
                     static_cast<int>(gs));
-            return TRANSCRIBE_ERR_GGUF;
+            return TRANSCRIBE_ERR_BACKEND;
         }
 
         int32_t argmax_tok = 0;
@@ -901,20 +907,27 @@ transcribe_status run(transcribe_session *          session,
 
         cur_past += 1;
         n_steps += 1;
+        if (next_tok != eos_id && transcribe::stop_on_repetition(generated_ids, "funasr_nano run")) {
+            cc->mark_repetition_stop();
+            repeating = true;
+            break;
+        }
     }
     (void) n_steps;
 
     // The decode stopped at EOS (complete) or at the generation budget /
     // context width (truncated). Surface the latter via
     // transcribe_was_truncated() and a WARN rather than returning a silently
-    // shortened transcript. See docs/input-limits.md.
-    if (next_tok != eos_id) {
+    // shortened transcript; a repetition stop has already done both. See
+    // docs/input-limits.md.
+    if (!repeating && next_tok != eos_id) {
         cc->was_truncated = true;
         transcribe::log_msg(TRANSCRIBE_LOG_LEVEL_WARN,
                             "funasr_nano run: output truncated at %d tokens — decode reached "
                             "the generation budget before end-of-stream; the transcript may be "
                             "incomplete.",
                             static_cast<int>(generated_ids.size()));
+        transcribe::trim_repetition_at_budget_stop(generated_ids, "funasr_nano run");
     }
 
     if (!generated_ids.empty() && generated_ids.back() == eos_id) {
@@ -939,7 +952,7 @@ transcribe_status run(transcribe_session *          session,
     // The partial transcript is fully populated above; a truncated decode
     // returns the hard OUTPUT_TRUNCATED status (the result stays readable,
     // like an aborted run). See docs/input-limits.md.
-    return cc->was_truncated ? TRANSCRIBE_ERR_OUTPUT_TRUNCATED : TRANSCRIBE_OK;
+    return cc->truncation_status();
 }
 
 }  // namespace
@@ -964,7 +977,7 @@ transcribe_status reset_ctx(FunAsrNanoSession * cc, int mb) {
     ip.mem_buffer   = nullptr;
     ip.no_alloc     = true;
     cc->compute_ctx = ggml_init(ip);
-    return cc->compute_ctx != nullptr ? TRANSCRIBE_OK : TRANSCRIBE_ERR_GGUF;
+    return cc->compute_ctx != nullptr ? TRANSCRIBE_OK : TRANSCRIBE_ERR_OOM;
 }
 
 // encoder + adaptor for one utterance from a PRECOMPUTED frontend buffer
@@ -994,12 +1007,12 @@ transcribe_status audio_embed_one(FunAsrNanoSession *        cc,
         cc->sched = ggml_backend_sched_new(cm->plan.scheduler_list.data(), nullptr,
                                            static_cast<int>(cm->plan.scheduler_list.size()), 16384, false, true);
         if (cc->sched == nullptr) {
-            return TRANSCRIBE_ERR_GGUF;
+            return TRANSCRIBE_ERR_BACKEND;
         }
     }
     ggml_backend_sched_reset(cc->sched);
     if (!ggml_backend_sched_alloc_graph(cc->sched, eb.graph)) {
-        return TRANSCRIBE_ERR_GGUF;
+        return TRANSCRIBE_ERR_OOM;
     }
     ggml_backend_tensor_set(eb.frontend_in, frontend_buf.data(), 0, frontend_buf.size() * sizeof(float));
     transcribe::sanm::build_sinusoidal_pe(cc->pe_buf, hp.enc_d_input, T_lfr);
@@ -1007,7 +1020,7 @@ transcribe_status audio_embed_one(FunAsrNanoSession *        cc,
     apply_thread_policy(cc);
     const int64_t t_enc0 = ggml_time_us();
     if (ggml_backend_sched_graph_compute(cc->sched, eb.graph) != GGML_STATUS_SUCCESS) {
-        return TRANSCRIBE_ERR_GGUF;
+        return TRANSCRIBE_ERR_BACKEND;
     }
     enc_us += ggml_time_us() - t_enc0;
     cc->enc_host.resize(static_cast<size_t>(hp.enc_d_model) * T_lfr);
@@ -1023,12 +1036,12 @@ transcribe_status audio_embed_one(FunAsrNanoSession *        cc,
     }
     ggml_backend_sched_reset(cc->sched);
     if (!ggml_backend_sched_alloc_graph(cc->sched, ab.graph)) {
-        return TRANSCRIBE_ERR_GGUF;
+        return TRANSCRIBE_ERR_OOM;
     }
     ggml_backend_tensor_set(ab.enc_in, cc->enc_host.data(), 0, cc->enc_host.size() * sizeof(float));
     const int64_t t_enc1 = ggml_time_us();
     if (ggml_backend_sched_graph_compute(cc->sched, ab.graph) != GGML_STATUS_SUCCESS) {
-        return TRANSCRIBE_ERR_GGUF;
+        return TRANSCRIBE_ERR_BACKEND;
     }
     enc_us += ggml_time_us() - t_enc1;
     cc->adaptor_host.resize(static_cast<size_t>(hp.adaptor_llm_dim) * T_lfr);
@@ -1046,21 +1059,8 @@ transcribe_status run_batch_serial(FunAsrNanoSession *           cc,
                                    const int *                   n_samples,
                                    int                           n,
                                    const transcribe_run_params * params) {
-    for (int i = 0; i < n; ++i) {
-        if (cc->poll_abort()) {
-            return TRANSCRIBE_ERR_ABORTED;
-        }
-        const transcribe_status st = (pcm[i] == nullptr || n_samples[i] <= 0) ? TRANSCRIBE_ERR_INVALID_ARG :
-                                                                                run(cc, pcm[i], n_samples[i], params);
-        if (st == TRANSCRIBE_OK) {
-            cc->batch_results.push_back(cc->capture_result(st));
-        } else {
-            transcribe_session::ResultSet rs;
-            rs.status = st;
-            cc->batch_results.push_back(std::move(rs));
-        }
-    }
-    return TRANSCRIBE_OK;
+    return transcribe::run_batch_serial(cc, pcm, n_samples, n,
+                                        [&](const float * p, int ns) { return run(cc, p, ns, params); });
 }
 
 }  // namespace
@@ -1150,25 +1150,26 @@ transcribe_status run_batch(transcribe_session *          session,
         // Input-length gate (see docs/input-limits.md). Audio tokens + prompt +
         // generation must fit the decoder context window; reject an over-length
         // utterance here instead of walling at a fixed KV size. Mirrors the
-        // single-shot run() gate (T_prompt + k_max_new > ceiling).
-        if (T_prompt[b] + k_max_new > ceiling) {
+        // single-shot run() gate (T_prompt + k_gen_reserve > ceiling).
+        if (T_prompt[b] + k_gen_reserve > ceiling) {
             const int suffix = T_prompt[b] - fbank_beg - T_audio[b];
             transcribe::log_msg(TRANSCRIBE_LOG_LEVEL_ERROR,
                                 "funasr_nano run_batch: utterance %d input too long — %d audio + "
                                 "%d prompt tokens leave no room for output within the %d-token "
                                 "context (need %d). Shorten the audio (see "
                                 "transcribe_capabilities.max_audio_ms) or split it.",
-                                b, T_audio[b], fbank_beg + suffix, ceiling, T_prompt[b] + k_max_new);
+                                b, T_audio[b], fbank_beg + suffix, ceiling, T_prompt[b] + k_gen_reserve);
             fail_status[b] = TRANSCRIBE_ERR_INPUT_TOO_LONG;
             continue;
         }
         valid[b] = 1;
     }
 
-    int max_T_prompt = 0;
+    int max_T_prompt = 0, max_T_audio = 0;
     for (int b = 0; b < n; ++b) {
         if (valid[b]) {
             max_T_prompt = std::max(max_T_prompt, T_prompt[b]);
+            max_T_audio  = std::max(max_T_audio, T_audio[b]);
         }
     }
     if (max_T_prompt == 0) {
@@ -1179,8 +1180,10 @@ transcribe_status run_batch(transcribe_session *          session,
         }
         return TRANSCRIBE_OK;
     }
-    const int max_new  = 256;
-    int       max_n_kv = 1024;
+    const int max_new = transcribe::pick_decode_budget(
+        transcribe::predict_transcript_tokens(max_T_audio, cm->limits.ms_per_audio_token), k_gen_reserve, max_T_prompt,
+        ceiling);
+    int max_n_kv = 1024;
     while (max_n_kv < max_T_prompt + max_new) {
         max_n_kv *= 2;
     }
@@ -1222,7 +1225,7 @@ transcribe_status run_batch(transcribe_session *          session,
         }
         T_audio_max = std::max(1, T_audio_max);
         if (reset_ctx(cc, 32) != TRANSCRIBE_OK) {
-            return TRANSCRIBE_ERR_GGUF;
+            return TRANSCRIBE_ERR_OOM;
         }
         PrefillBuildBatched pb = build_prefill_graph_batched(cc->compute_ctx, cm->weights, hp, cc->kv_cache_batch,
                                                              max_T_prompt, T_audio_max, n, cc->decoder_use_flash);
@@ -1231,7 +1234,7 @@ transcribe_status run_batch(transcribe_session *          session,
         }
         ggml_backend_sched_reset(cc->sched);
         if (!ggml_backend_sched_alloc_graph(cc->sched, pb.graph)) {
-            return TRANSCRIBE_ERR_GGUF;
+            return TRANSCRIBE_ERR_OOM;
         }
 
         const int            hidden = hp.dec_hidden;
@@ -1288,7 +1291,7 @@ transcribe_status run_batch(transcribe_session *          session,
         ggml_backend_tensor_set(pb.last_idx_in, lidx.data(), 0, lidx.size() * sizeof(int32_t));
         apply_thread_policy(cc);
         if (ggml_backend_sched_graph_compute(cc->sched, pb.graph) != GGML_STATUS_SUCCESS) {
-            return TRANSCRIBE_ERR_GGUF;
+            return TRANSCRIBE_ERR_BACKEND;
         }
         std::vector<int32_t> amax(n, 0);
         ggml_backend_tensor_get(pb.out, amax.data(), 0, amax.size() * sizeof(int32_t));
@@ -1306,7 +1309,7 @@ transcribe_status run_batch(transcribe_session *          session,
     const int32_t eos_id = cm->hparams.eos_token_id;
 
     if (reset_ctx(cc, 16) != TRANSCRIBE_OK) {
-        return TRANSCRIBE_ERR_GGUF;
+        return TRANSCRIBE_ERR_OOM;
     }
     StepBuildBatched sb = build_step_graph_batched(cc->compute_ctx, cm->weights, hp, cc->kv_cache_batch, max_n_kv, n,
                                                    cc->decoder_use_flash);
@@ -1315,7 +1318,7 @@ transcribe_status run_batch(transcribe_session *          session,
     }
     ggml_backend_sched_reset(cc->sched);
     if (!ggml_backend_sched_alloc_graph(cc->sched, sb.graph)) {
-        return TRANSCRIBE_ERR_GGUF;
+        return TRANSCRIBE_ERR_OOM;
     }
 
     transcribe::causal_lm::StepBatchedIO io{};
@@ -1367,11 +1370,12 @@ transcribe_status run_batch(transcribe_session *          session,
         rs.segments.push_back(std::move(seg));
         // Per-utterance truncation parity with single-shot run(): a row cut at
         // the generation budget / KV window before eos reports
-        // TRANSCRIBE_ERR_OUTPUT_TRUNCATED (partial transcript retained). Only
-        // override a TRANSCRIBE_OK status, never a worse one.
+        // TRANSCRIBE_ERR_OUTPUT_TRUNCATED, and one the repetition guard stopped
+        // reports TRANSCRIBE_ERR_OUTPUT_REPETITION (partial transcript retained
+        // either way). Only override a TRANSCRIBE_OK status, never a worse one.
         if (b < static_cast<int>(truncated.size()) && truncated[b] && rs.status == TRANSCRIBE_OK) {
             cc->was_truncated = true;
-            rs.status         = TRANSCRIBE_ERR_OUTPUT_TRUNCATED;
+            rs.status         = transcribe::decode_stop_status(truncated[b]);
         }
         rs.t_mel_us    = mel_us / valid_count;
         rs.t_encode_us = enc_us / valid_count;

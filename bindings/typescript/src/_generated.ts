@@ -11,7 +11,7 @@
 // Stable digest of the ABI surface (structs, enums, macros, layout,
 // prototypes), computed by the Python oracle and pinned here so a header
 // ABI change turns this binding's drift check red for conscious review.
-export const PUBLIC_HEADER_HASH = "6add59d419a81f2a";
+export const PUBLIC_HEADER_HASH = "14d1bc244a2227d8";
 
 // === enum constants ===
 export const TRANSCRIBE_OK = 0;
@@ -33,6 +33,7 @@ export const TRANSCRIBE_ERR_UNSUPPORTED_PNC = 15;
 export const TRANSCRIBE_ERR_UNSUPPORTED_ITN = 16;
 export const TRANSCRIBE_ERR_INPUT_TOO_LONG = 17;
 export const TRANSCRIBE_ERR_OUTPUT_TRUNCATED = 18;
+export const TRANSCRIBE_ERR_OUTPUT_REPETITION = 19;
 export const TRANSCRIBE_ABI_MODEL_LOAD_PARAMS = 0;
 export const TRANSCRIBE_ABI_SESSION_PARAMS = 1;
 export const TRANSCRIBE_ABI_RUN_PARAMS = 2;
@@ -46,7 +47,7 @@ export const TRANSCRIBE_ABI_STREAM_UPDATE = 9;
 export const TRANSCRIBE_ABI_STREAM_TEXT = 10;
 export const TRANSCRIBE_ABI_SESSION_LIMITS = 11;
 export const TRANSCRIBE_ABI_EXT = 12;
-export const TRANSCRIBE_ABI_BACKEND_DEVICE = 13;
+export const TRANSCRIBE_ABI_DEVICE_INFO = 13;
 export const TRANSCRIBE_ABI_SPEAKER_SEGMENT = 14;
 export const TRANSCRIBE_LOG_LEVEL_NONE = 0;
 export const TRANSCRIBE_LOG_LEVEL_INFO = 1;
@@ -112,6 +113,7 @@ export const TRANSCRIBE_EXT_KIND_MOONSHINE_STREAMING_STREAM = 1414746957;
 export const TRANSCRIBE_EXT_KIND_PARAKEET_BUFFERED_STREAM = 1396853584;
 export const TRANSCRIBE_EXT_KIND_PARAKEET_STREAM = 1414744912;
 export const TRANSCRIBE_EXT_KIND_SORTFORMER_STREAM = 1414743635;
+export const TRANSCRIBE_EXT_KIND_TITANET_DIARIZE = 1514425940;
 export const TRANSCRIBE_EXT_KIND_VOXTRAL_REALTIME_STREAM = 1414746710;
 export const TRANSCRIBE_EXT_KIND_VOXTRAL_RUN = 1314019414;
 export const TRANSCRIBE_EXT_KIND_WHISPER_RUN = 1314015319;
@@ -119,10 +121,10 @@ export const TRANSCRIBE_EXT_KIND_WHISPER_RUN = 1314015319;
 export interface StructLayout { size: number; align: number; offsets: Record<string, number>; }
 export const STRUCT_LAYOUT: Record<string, StructLayout> = {
   'transcribe_ext': { size: 16, align: 8, offsets: {'size': 0, 'kind': 8} },
-  'transcribe_backend_device': { size: 64, align: 8, offsets: {'struct_size': 0, 'name': 8, 'description': 16, 'kind': 24, 'device_id': 32, 'memory_total': 40, 'memory_free': 48, 'device_type': 56} },
-  'transcribe_model_load_params': { size: 16, align: 8, offsets: {'struct_size': 0, 'backend': 8, 'gpu_device': 12} },
+  'transcribe_device_info': { size: 64, align: 8, offsets: {'struct_size': 0, 'name': 8, 'description': 16, 'kind': 24, 'device_id': 32, 'memory_total': 40, 'memory_free': 48, 'device_type': 56} },
+  'transcribe_model_load_params': { size: 24, align: 8, offsets: {'struct_size': 0, 'backend': 8, 'device': 16} },
   'transcribe_session_params': { size: 24, align: 8, offsets: {'struct_size': 0, 'n_threads': 8, 'kv_type': 12, 'n_ctx': 16} },
-  'transcribe_run_params': { size: 72, align: 8, offsets: {'struct_size': 0, 'task': 8, 'timestamps': 12, 'pnc': 16, 'itn': 20, 'diarize': 24, 'language': 32, 'target_language': 40, 'keep_special_tags': 48, 'family': 56, 'spec_k_drafts': 64} },
+  'transcribe_run_params': { size: 96, align: 8, offsets: {'struct_size': 0, 'task': 8, 'timestamps': 12, 'pnc': 16, 'itn': 20, 'diarize': 24, 'language': 32, 'target_language': 40, 'keep_special_tags': 48, 'family': 56, 'spec_k_drafts': 64, 'norm_mean': 72, 'norm_stddev': 80, 'norm_n_mels': 88} },
   'transcribe_capabilities': { size: 56, align: 8, offsets: {'struct_size': 0, 'native_sample_rate': 8, 'n_languages': 12, 'languages': 16, 'max_timestamp_kind': 24, 'supports_language_detect': 28, 'supports_translate': 29, 'supports_streaming': 30, 'supports_spec_decode': 31, 'max_audio_ms': 32, 'n_translate_target_languages': 40, 'translate_target_languages': 48} },
   'transcribe_session_limits': { size: 32, align: 8, offsets: {'struct_size': 0, 'effective_n_ctx': 8, 'effective_max_audio_ms': 16, 'max_kv_bytes': 24} },
   'transcribe_stream_params': { size: 24, align: 8, offsets: {'struct_size': 0, 'family': 8, 'commit_policy': 16, 'stable_prefix_agreement_n': 20} },
@@ -137,6 +139,7 @@ export const STRUCT_LAYOUT: Record<string, StructLayout> = {
   'transcribe_parakeet_stream_ext': { size: 24, align: 8, offsets: {'ext': 0, 'att_context_right': 16} },
   'transcribe_parakeet_buffered_stream_ext': { size: 32, align: 8, offsets: {'ext': 0, 'left_ms': 16, 'chunk_ms': 20, 'right_ms': 24} },
   'transcribe_sortformer_stream_ext': { size: 24, align: 8, offsets: {'ext': 0, 'preset': 16} },
+  'transcribe_titanet_diarize_ext': { size: 40, align: 8, offsets: {'ext': 0, 'num_speakers': 16, 'threshold': 20, 'speech_ms': 24, 'n_speech': 32} },
   'transcribe_voxtral_run_ext': { size: 24, align: 8, offsets: {'ext': 0, 'instruction': 16} },
   'transcribe_voxtral_realtime_stream_ext': { size: 24, align: 8, offsets: {'ext': 0, 'num_delay_tokens': 16, 'min_decode_interval_ms': 20} },
   'transcribe_whisper_run_ext': { size: 80, align: 8, offsets: {'ext': 0, 'initial_prompt': 16, 'prompt_tokens': 24, 'n_prompt_tokens': 32, 'prompt_condition': 40, 'condition_on_prev_tokens': 44, 'max_prev_context_tokens': 48, 'temperature': 52, 'temperature_inc': 56, 'compression_ratio_thold': 60, 'logprob_thold': 64, 'no_speech_thold': 68, 'seed': 72, 'max_initial_timestamp': 76} },
@@ -145,7 +148,7 @@ export const STRUCT_LAYOUT: Record<string, StructLayout> = {
 
 export const ABI_STRUCT_IDS: Record<string, number> = {
   'transcribe_ext': 12,
-  'transcribe_backend_device': 13,
+  'transcribe_device_info': 13,
   'transcribe_model_load_params': 0,
   'transcribe_session_params': 1,
   'transcribe_run_params': 2,
@@ -165,10 +168,10 @@ export const ABI_STRUCT_IDS: Record<string, number> = {
 export function defineTypes(koffi: any): Record<string, any> {
   const T: Record<string, any> = {};
   T['transcribe_ext'] = koffi.struct({ size: 'uint64_t', kind: 'uint32_t' });
-  T['transcribe_backend_device'] = koffi.struct({ struct_size: 'uint64_t', name: 'char *', description: 'char *', kind: 'char *', device_id: 'char *', memory_total: 'uint64_t', memory_free: 'uint64_t', device_type: 'int' });
-  T['transcribe_model_load_params'] = koffi.struct({ struct_size: 'uint64_t', backend: 'int', gpu_device: 'int' });
+  T['transcribe_device_info'] = koffi.struct({ struct_size: 'uint64_t', name: 'char *', description: 'char *', kind: 'char *', device_id: 'char *', memory_total: 'uint64_t', memory_free: 'uint64_t', device_type: 'int' });
+  T['transcribe_model_load_params'] = koffi.struct({ struct_size: 'uint64_t', backend: 'int', device: 'void *' });
   T['transcribe_session_params'] = koffi.struct({ struct_size: 'uint64_t', n_threads: 'int', kv_type: 'int', n_ctx: 'int32_t' });
-  T['transcribe_run_params'] = koffi.struct({ struct_size: 'uint64_t', task: 'int', timestamps: 'int', pnc: 'int', itn: 'int', diarize: 'int', language: 'char *', target_language: 'char *', keep_special_tags: 'bool', family: 'void *', spec_k_drafts: 'int32_t' });
+  T['transcribe_run_params'] = koffi.struct({ struct_size: 'uint64_t', task: 'int', timestamps: 'int', pnc: 'int', itn: 'int', diarize: 'int', language: 'char *', target_language: 'char *', keep_special_tags: 'bool', family: 'void *', spec_k_drafts: 'int32_t', norm_mean: 'void *', norm_stddev: 'void *', norm_n_mels: 'int32_t' });
   T['transcribe_capabilities'] = koffi.struct({ struct_size: 'uint64_t', native_sample_rate: 'int32_t', n_languages: 'int', languages: 'void *', max_timestamp_kind: 'int', supports_language_detect: 'bool', supports_translate: 'bool', supports_streaming: 'bool', supports_spec_decode: 'bool', max_audio_ms: 'int64_t', n_translate_target_languages: 'int', translate_target_languages: 'void *' });
   T['transcribe_session_limits'] = koffi.struct({ struct_size: 'uint64_t', effective_n_ctx: 'int32_t', effective_max_audio_ms: 'int64_t', max_kv_bytes: 'int64_t' });
   T['transcribe_stream_params'] = koffi.struct({ struct_size: 'uint64_t', family: 'void *', commit_policy: 'int', stable_prefix_agreement_n: 'uint32_t' });
@@ -183,6 +186,7 @@ export function defineTypes(koffi: any): Record<string, any> {
   T['transcribe_parakeet_stream_ext'] = koffi.struct({ ext: T['transcribe_ext'], att_context_right: 'int32_t' });
   T['transcribe_parakeet_buffered_stream_ext'] = koffi.struct({ ext: T['transcribe_ext'], left_ms: 'int32_t', chunk_ms: 'int32_t', right_ms: 'int32_t' });
   T['transcribe_sortformer_stream_ext'] = koffi.struct({ ext: T['transcribe_ext'], preset: 'int' });
+  T['transcribe_titanet_diarize_ext'] = koffi.struct({ ext: T['transcribe_ext'], num_speakers: 'int32_t', threshold: 'float', speech_ms: 'void *', n_speech: 'int32_t' });
   T['transcribe_voxtral_run_ext'] = koffi.struct({ ext: T['transcribe_ext'], instruction: 'char *' });
   T['transcribe_voxtral_realtime_stream_ext'] = koffi.struct({ ext: T['transcribe_ext'], num_delay_tokens: 'int32_t', min_decode_interval_ms: 'int32_t' });
   T['transcribe_whisper_run_ext'] = koffi.struct({ ext: T['transcribe_ext'], initial_prompt: 'char *', prompt_tokens: 'void *', n_prompt_tokens: 'size_t', prompt_condition: 'int', condition_on_prev_tokens: 'bool', max_prev_context_tokens: 'int32_t', temperature: 'float', temperature_inc: 'float', compression_ratio_thold: 'float', logprob_thold: 'float', no_speech_thold: 'float', seed: 'uint32_t', max_initial_timestamp: 'float' });
@@ -195,10 +199,8 @@ export const FUNCTION_SIGNATURES: Record<string, FnSig> = {
   'transcribe_abi_struct_align': { ret: 'size_t', args: ['transcribe_abi_struct'] },
   'transcribe_abi_struct_size': { ret: 'size_t', args: ['transcribe_abi_struct'] },
   'transcribe_backend_available': { ret: '_Bool', args: ['transcribe_backend_request'] },
-  'transcribe_backend_device_compiled_kernel_name': { ret: 'const char *', args: ['int', 'uint64_t'] },
-  'transcribe_backend_device_compiled_kernels': { ret: 'uint64_t', args: ['int'] },
-  'transcribe_backend_device_count': { ret: 'int', args: [] },
-  'transcribe_backend_device_init': { ret: 'void', args: ['struct transcribe_backend_device *'] },
+  'transcribe_backend_device_compiled_kernel_name': { ret: 'const char *', args: ['transcribe_device_t', 'uint64_t'] },
+  'transcribe_backend_device_compiled_kernels': { ret: 'uint64_t', args: ['transcribe_device_t'] },
   'transcribe_batch_detected_language': { ret: 'const char *', args: ['const struct transcribe_session *', 'int'] },
   'transcribe_batch_full_text': { ret: 'const char *', args: ['const struct transcribe_session *', 'int'] },
   'transcribe_batch_get_segment': { ret: 'transcribe_status', args: ['const struct transcribe_session *', 'int', 'int', 'struct transcribe_segment *'] },
@@ -217,9 +219,14 @@ export const FUNCTION_SIGNATURES: Record<string, FnSig> = {
   'transcribe_capabilities_init': { ret: 'void', args: ['struct transcribe_capabilities *'] },
   'transcribe_close': { ret: 'void', args: ['struct transcribe_session *'] },
   'transcribe_detected_language': { ret: 'const char *', args: ['const struct transcribe_session *'] },
+  'transcribe_device_count': { ret: 'int', args: [] },
+  'transcribe_device_get': { ret: 'transcribe_device_t', args: ['int'] },
+  'transcribe_device_get_info': { ret: 'transcribe_status', args: ['transcribe_device_t', 'struct transcribe_device_info *'] },
+  'transcribe_device_info_init': { ret: 'void', args: ['struct transcribe_device_info *'] },
   'transcribe_ext_check': { ret: 'transcribe_status', args: ['const struct transcribe_ext *', 'uint32_t', 'uint64_t'] },
+  'transcribe_feature_bins': { ret: 'int32_t', args: ['const struct transcribe_model *'] },
+  'transcribe_feature_stats': { ret: 'transcribe_status', args: ['const struct transcribe_model *', 'const float *', 'size_t', 'float *', 'float *', 'int32_t'] },
   'transcribe_full_text': { ret: 'const char *', args: ['const struct transcribe_session *'] },
-  'transcribe_get_backend_device': { ret: 'transcribe_status', args: ['int', 'struct transcribe_backend_device *'] },
   'transcribe_get_model': { ret: 'const struct transcribe_model *', args: ['const struct transcribe_session *'] },
   'transcribe_get_segment': { ret: 'transcribe_status', args: ['const struct transcribe_session *', 'int', 'struct transcribe_segment *'] },
   'transcribe_get_speaker_segment': { ret: 'transcribe_status', args: ['const struct transcribe_session *', 'int', 'struct transcribe_speaker_segment *'] },
@@ -234,9 +241,9 @@ export const FUNCTION_SIGNATURES: Record<string, FnSig> = {
   'transcribe_model_accepts_ext_kind': { ret: '_Bool', args: ['const struct transcribe_model *', 'transcribe_ext_slot', 'uint32_t'] },
   'transcribe_model_arch_string': { ret: 'const char *', args: ['const struct transcribe_model *'] },
   'transcribe_model_backend': { ret: 'const char *', args: ['const struct transcribe_model *'] },
+  'transcribe_model_device': { ret: 'transcribe_device_t', args: ['const struct transcribe_model *'] },
   'transcribe_model_free': { ret: 'void', args: ['struct transcribe_model *'] },
   'transcribe_model_get_capabilities': { ret: 'transcribe_status', args: ['const struct transcribe_model *', 'struct transcribe_capabilities *'] },
-  'transcribe_model_get_device': { ret: 'transcribe_status', args: ['const struct transcribe_model *', 'struct transcribe_backend_device *'] },
   'transcribe_model_load_file': { ret: 'transcribe_status', args: ['const char *', 'const struct transcribe_model_load_params *', 'struct transcribe_model **'] },
   'transcribe_model_load_params_init': { ret: 'void', args: ['struct transcribe_model_load_params *'] },
   'transcribe_model_meta_val_str': { ret: 'const char *', args: ['const struct transcribe_model *', 'const char *'] },
@@ -282,6 +289,7 @@ export const FUNCTION_SIGNATURES: Record<string, FnSig> = {
   'transcribe_stream_text_init': { ret: 'void', args: ['struct transcribe_stream_text *'] },
   'transcribe_stream_update_init': { ret: 'void', args: ['struct transcribe_stream_update *'] },
   'transcribe_timings_init': { ret: 'void', args: ['struct transcribe_timings *'] },
+  'transcribe_titanet_diarize_ext_init': { ret: 'void', args: ['struct transcribe_titanet_diarize_ext *'] },
   'transcribe_token_init': { ret: 'void', args: ['struct transcribe_token *'] },
   'transcribe_tokenize': { ret: 'int', args: ['const struct transcribe_model *', 'const char *', 'int32_t *', 'size_t'] },
   'transcribe_version': { ret: 'const char *', args: [] },

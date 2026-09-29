@@ -13,7 +13,7 @@ import ctypes as _c
 # Stable digest of the ABI surface below (structs, enums, macros, layout,
 # prototypes). A native provider package echoes this back so the API
 # package can reject an ABI-mismatched provider before dlopen.
-PUBLIC_HEADER_HASH = "6add59d419a81f2a"
+PUBLIC_HEADER_HASH = "14d1bc244a2227d8"
 
 # === enum constants ===
 TRANSCRIBE_OK = 0
@@ -35,6 +35,7 @@ TRANSCRIBE_ERR_UNSUPPORTED_PNC = 15
 TRANSCRIBE_ERR_UNSUPPORTED_ITN = 16
 TRANSCRIBE_ERR_INPUT_TOO_LONG = 17
 TRANSCRIBE_ERR_OUTPUT_TRUNCATED = 18
+TRANSCRIBE_ERR_OUTPUT_REPETITION = 19
 TRANSCRIBE_ABI_MODEL_LOAD_PARAMS = 0
 TRANSCRIBE_ABI_SESSION_PARAMS = 1
 TRANSCRIBE_ABI_RUN_PARAMS = 2
@@ -48,7 +49,7 @@ TRANSCRIBE_ABI_STREAM_UPDATE = 9
 TRANSCRIBE_ABI_STREAM_TEXT = 10
 TRANSCRIBE_ABI_SESSION_LIMITS = 11
 TRANSCRIBE_ABI_EXT = 12
-TRANSCRIBE_ABI_BACKEND_DEVICE = 13
+TRANSCRIBE_ABI_DEVICE_INFO = 13
 TRANSCRIBE_ABI_SPEAKER_SEGMENT = 14
 TRANSCRIBE_LOG_LEVEL_NONE = 0
 TRANSCRIBE_LOG_LEVEL_INFO = 1
@@ -114,6 +115,7 @@ TRANSCRIBE_EXT_KIND_MOONSHINE_STREAMING_STREAM = 1414746957
 TRANSCRIBE_EXT_KIND_PARAKEET_BUFFERED_STREAM = 1396853584
 TRANSCRIBE_EXT_KIND_PARAKEET_STREAM = 1414744912
 TRANSCRIBE_EXT_KIND_SORTFORMER_STREAM = 1414743635
+TRANSCRIBE_EXT_KIND_TITANET_DIARIZE = 1514425940
 TRANSCRIBE_EXT_KIND_VOXTRAL_REALTIME_STREAM = 1414746710
 TRANSCRIBE_EXT_KIND_VOXTRAL_RUN = 1314019414
 TRANSCRIBE_EXT_KIND_WHISPER_RUN = 1314015319
@@ -121,7 +123,7 @@ TRANSCRIBE_EXT_KIND_WHISPER_RUN = 1314015319
 # === structs ===
 class transcribe_ext(_c.Structure):
     pass
-class transcribe_backend_device(_c.Structure):
+class transcribe_device_info(_c.Structure):
     pass
 class transcribe_model_load_params(_c.Structure):
     pass
@@ -157,6 +159,8 @@ class transcribe_parakeet_buffered_stream_ext(_c.Structure):
     pass
 class transcribe_sortformer_stream_ext(_c.Structure):
     pass
+class transcribe_titanet_diarize_ext(_c.Structure):
+    pass
 class transcribe_voxtral_run_ext(_c.Structure):
     pass
 class transcribe_voxtral_realtime_stream_ext(_c.Structure):
@@ -167,10 +171,10 @@ class transcribe_whisper_chunk_trace(_c.Structure):
     pass
 
 transcribe_ext._fields_ = [("size", _c.c_uint64), ("kind", _c.c_uint32)]
-transcribe_backend_device._fields_ = [("struct_size", _c.c_uint64), ("name", _c.c_char_p), ("description", _c.c_char_p), ("kind", _c.c_char_p), ("device_id", _c.c_char_p), ("memory_total", _c.c_uint64), ("memory_free", _c.c_uint64), ("device_type", _c.c_int)]
-transcribe_model_load_params._fields_ = [("struct_size", _c.c_uint64), ("backend", _c.c_int), ("gpu_device", _c.c_int)]
+transcribe_device_info._fields_ = [("struct_size", _c.c_uint64), ("name", _c.c_char_p), ("description", _c.c_char_p), ("kind", _c.c_char_p), ("device_id", _c.c_char_p), ("memory_total", _c.c_uint64), ("memory_free", _c.c_uint64), ("device_type", _c.c_int)]
+transcribe_model_load_params._fields_ = [("struct_size", _c.c_uint64), ("backend", _c.c_int), ("device", _c.c_void_p)]
 transcribe_session_params._fields_ = [("struct_size", _c.c_uint64), ("n_threads", _c.c_int), ("kv_type", _c.c_int), ("n_ctx", _c.c_int32)]
-transcribe_run_params._fields_ = [("struct_size", _c.c_uint64), ("task", _c.c_int), ("timestamps", _c.c_int), ("pnc", _c.c_int), ("itn", _c.c_int), ("diarize", _c.c_int), ("language", _c.c_char_p), ("target_language", _c.c_char_p), ("keep_special_tags", _c.c_bool), ("family", _c.POINTER(transcribe_ext)), ("spec_k_drafts", _c.c_int32)]
+transcribe_run_params._fields_ = [("struct_size", _c.c_uint64), ("task", _c.c_int), ("timestamps", _c.c_int), ("pnc", _c.c_int), ("itn", _c.c_int), ("diarize", _c.c_int), ("language", _c.c_char_p), ("target_language", _c.c_char_p), ("keep_special_tags", _c.c_bool), ("family", _c.POINTER(transcribe_ext)), ("spec_k_drafts", _c.c_int32), ("norm_mean", _c.POINTER(_c.c_float)), ("norm_stddev", _c.POINTER(_c.c_float)), ("norm_n_mels", _c.c_int32)]
 transcribe_capabilities._fields_ = [("struct_size", _c.c_uint64), ("native_sample_rate", _c.c_int32), ("n_languages", _c.c_int), ("languages", _c.POINTER(_c.c_char_p)), ("max_timestamp_kind", _c.c_int), ("supports_language_detect", _c.c_bool), ("supports_translate", _c.c_bool), ("supports_streaming", _c.c_bool), ("supports_spec_decode", _c.c_bool), ("max_audio_ms", _c.c_int64), ("n_translate_target_languages", _c.c_int), ("translate_target_languages", _c.POINTER(_c.c_char_p))]
 transcribe_session_limits._fields_ = [("struct_size", _c.c_uint64), ("effective_n_ctx", _c.c_int32), ("effective_max_audio_ms", _c.c_int64), ("max_kv_bytes", _c.c_int64)]
 transcribe_stream_params._fields_ = [("struct_size", _c.c_uint64), ("family", _c.POINTER(transcribe_ext)), ("commit_policy", _c.c_int), ("stable_prefix_agreement_n", _c.c_uint32)]
@@ -185,6 +189,7 @@ transcribe_moonshine_streaming_stream_ext._fields_ = [("ext", transcribe_ext), (
 transcribe_parakeet_stream_ext._fields_ = [("ext", transcribe_ext), ("att_context_right", _c.c_int32)]
 transcribe_parakeet_buffered_stream_ext._fields_ = [("ext", transcribe_ext), ("left_ms", _c.c_int32), ("chunk_ms", _c.c_int32), ("right_ms", _c.c_int32)]
 transcribe_sortformer_stream_ext._fields_ = [("ext", transcribe_ext), ("preset", _c.c_int)]
+transcribe_titanet_diarize_ext._fields_ = [("ext", transcribe_ext), ("num_speakers", _c.c_int32), ("threshold", _c.c_float), ("speech_ms", _c.POINTER(_c.c_int64)), ("n_speech", _c.c_int32)]
 transcribe_voxtral_run_ext._fields_ = [("ext", transcribe_ext), ("instruction", _c.c_char_p)]
 transcribe_voxtral_realtime_stream_ext._fields_ = [("ext", transcribe_ext), ("num_delay_tokens", _c.c_int32), ("min_decode_interval_ms", _c.c_int32)]
 transcribe_whisper_run_ext._fields_ = [("ext", transcribe_ext), ("initial_prompt", _c.c_char_p), ("prompt_tokens", _c.POINTER(_c.c_int32)), ("n_prompt_tokens", _c.c_size_t), ("prompt_condition", _c.c_int), ("condition_on_prev_tokens", _c.c_bool), ("max_prev_context_tokens", _c.c_int32), ("temperature", _c.c_float), ("temperature_inc", _c.c_float), ("compression_ratio_thold", _c.c_float), ("logprob_thold", _c.c_float), ("no_speech_thold", _c.c_float), ("seed", _c.c_uint32), ("max_initial_timestamp", _c.c_float)]
@@ -194,7 +199,7 @@ transcribe_whisper_chunk_trace._fields_ = [("struct_size", _c.c_uint64), ("t0_ms
 # transcribe_abi_struct id per struct (for the native size/align check).
 ABI_STRUCT_IDS = {
     'transcribe_ext': 12,
-    'transcribe_backend_device': 13,
+    'transcribe_device_info': 13,
     'transcribe_model_load_params': 0,
     'transcribe_session_params': 1,
     'transcribe_run_params': 2,
@@ -213,10 +218,10 @@ ABI_STRUCT_IDS = {
 # C-compiler layout captured at generation (for offset self-check).
 STRUCT_LAYOUT = {
     'transcribe_ext': {'size': 16, 'align': 8, 'offsets': {'size': 0, 'kind': 8}},
-    'transcribe_backend_device': {'size': 64, 'align': 8, 'offsets': {'struct_size': 0, 'name': 8, 'description': 16, 'kind': 24, 'device_id': 32, 'memory_total': 40, 'memory_free': 48, 'device_type': 56}},
-    'transcribe_model_load_params': {'size': 16, 'align': 8, 'offsets': {'struct_size': 0, 'backend': 8, 'gpu_device': 12}},
+    'transcribe_device_info': {'size': 64, 'align': 8, 'offsets': {'struct_size': 0, 'name': 8, 'description': 16, 'kind': 24, 'device_id': 32, 'memory_total': 40, 'memory_free': 48, 'device_type': 56}},
+    'transcribe_model_load_params': {'size': 24, 'align': 8, 'offsets': {'struct_size': 0, 'backend': 8, 'device': 16}},
     'transcribe_session_params': {'size': 24, 'align': 8, 'offsets': {'struct_size': 0, 'n_threads': 8, 'kv_type': 12, 'n_ctx': 16}},
-    'transcribe_run_params': {'size': 72, 'align': 8, 'offsets': {'struct_size': 0, 'task': 8, 'timestamps': 12, 'pnc': 16, 'itn': 20, 'diarize': 24, 'language': 32, 'target_language': 40, 'keep_special_tags': 48, 'family': 56, 'spec_k_drafts': 64}},
+    'transcribe_run_params': {'size': 96, 'align': 8, 'offsets': {'struct_size': 0, 'task': 8, 'timestamps': 12, 'pnc': 16, 'itn': 20, 'diarize': 24, 'language': 32, 'target_language': 40, 'keep_special_tags': 48, 'family': 56, 'spec_k_drafts': 64, 'norm_mean': 72, 'norm_stddev': 80, 'norm_n_mels': 88}},
     'transcribe_capabilities': {'size': 56, 'align': 8, 'offsets': {'struct_size': 0, 'native_sample_rate': 8, 'n_languages': 12, 'languages': 16, 'max_timestamp_kind': 24, 'supports_language_detect': 28, 'supports_translate': 29, 'supports_streaming': 30, 'supports_spec_decode': 31, 'max_audio_ms': 32, 'n_translate_target_languages': 40, 'translate_target_languages': 48}},
     'transcribe_session_limits': {'size': 32, 'align': 8, 'offsets': {'struct_size': 0, 'effective_n_ctx': 8, 'effective_max_audio_ms': 16, 'max_kv_bytes': 24}},
     'transcribe_stream_params': {'size': 24, 'align': 8, 'offsets': {'struct_size': 0, 'family': 8, 'commit_policy': 16, 'stable_prefix_agreement_n': 20}},
@@ -231,6 +236,7 @@ STRUCT_LAYOUT = {
     'transcribe_parakeet_stream_ext': {'size': 24, 'align': 8, 'offsets': {'ext': 0, 'att_context_right': 16}},
     'transcribe_parakeet_buffered_stream_ext': {'size': 32, 'align': 8, 'offsets': {'ext': 0, 'left_ms': 16, 'chunk_ms': 20, 'right_ms': 24}},
     'transcribe_sortformer_stream_ext': {'size': 24, 'align': 8, 'offsets': {'ext': 0, 'preset': 16}},
+    'transcribe_titanet_diarize_ext': {'size': 40, 'align': 8, 'offsets': {'ext': 0, 'num_speakers': 16, 'threshold': 20, 'speech_ms': 24, 'n_speech': 32}},
     'transcribe_voxtral_run_ext': {'size': 24, 'align': 8, 'offsets': {'ext': 0, 'instruction': 16}},
     'transcribe_voxtral_realtime_stream_ext': {'size': 24, 'align': 8, 'offsets': {'ext': 0, 'num_delay_tokens': 16, 'min_decode_interval_ms': 20}},
     'transcribe_whisper_run_ext': {'size': 80, 'align': 8, 'offsets': {'ext': 0, 'initial_prompt': 16, 'prompt_tokens': 24, 'n_prompt_tokens': 32, 'prompt_condition': 40, 'condition_on_prev_tokens': 44, 'max_prev_context_tokens': 48, 'temperature': 52, 'temperature_inc': 56, 'compression_ratio_thold': 60, 'logprob_thold': 64, 'no_speech_thold': 68, 'seed': 72, 'max_initial_timestamp': 76}},
@@ -247,13 +253,9 @@ def configure(lib):
     lib.transcribe_backend_available.restype = _c.c_bool
     lib.transcribe_backend_available.argtypes = [_c.c_int]
     lib.transcribe_backend_device_compiled_kernel_name.restype = _c.c_char_p
-    lib.transcribe_backend_device_compiled_kernel_name.argtypes = [_c.c_int, _c.c_uint64]
+    lib.transcribe_backend_device_compiled_kernel_name.argtypes = [_c.c_void_p, _c.c_uint64]
     lib.transcribe_backend_device_compiled_kernels.restype = _c.c_uint64
-    lib.transcribe_backend_device_compiled_kernels.argtypes = [_c.c_int]
-    lib.transcribe_backend_device_count.restype = _c.c_int
-    lib.transcribe_backend_device_count.argtypes = []
-    lib.transcribe_backend_device_init.restype = None
-    lib.transcribe_backend_device_init.argtypes = [_c.POINTER(transcribe_backend_device)]
+    lib.transcribe_backend_device_compiled_kernels.argtypes = [_c.c_void_p]
     lib.transcribe_batch_detected_language.restype = _c.c_char_p
     lib.transcribe_batch_detected_language.argtypes = [_c.c_void_p, _c.c_int]
     lib.transcribe_batch_full_text.restype = _c.c_char_p
@@ -290,12 +292,22 @@ def configure(lib):
     lib.transcribe_close.argtypes = [_c.c_void_p]
     lib.transcribe_detected_language.restype = _c.c_char_p
     lib.transcribe_detected_language.argtypes = [_c.c_void_p]
+    lib.transcribe_device_count.restype = _c.c_int
+    lib.transcribe_device_count.argtypes = []
+    lib.transcribe_device_get.restype = _c.c_void_p
+    lib.transcribe_device_get.argtypes = [_c.c_int]
+    lib.transcribe_device_get_info.restype = _c.c_int
+    lib.transcribe_device_get_info.argtypes = [_c.c_void_p, _c.POINTER(transcribe_device_info)]
+    lib.transcribe_device_info_init.restype = None
+    lib.transcribe_device_info_init.argtypes = [_c.POINTER(transcribe_device_info)]
     lib.transcribe_ext_check.restype = _c.c_int
     lib.transcribe_ext_check.argtypes = [_c.POINTER(transcribe_ext), _c.c_uint32, _c.c_uint64]
+    lib.transcribe_feature_bins.restype = _c.c_int32
+    lib.transcribe_feature_bins.argtypes = [_c.c_void_p]
+    lib.transcribe_feature_stats.restype = _c.c_int
+    lib.transcribe_feature_stats.argtypes = [_c.c_void_p, _c.POINTER(_c.c_float), _c.c_size_t, _c.POINTER(_c.c_float), _c.POINTER(_c.c_float), _c.c_int32]
     lib.transcribe_full_text.restype = _c.c_char_p
     lib.transcribe_full_text.argtypes = [_c.c_void_p]
-    lib.transcribe_get_backend_device.restype = _c.c_int
-    lib.transcribe_get_backend_device.argtypes = [_c.c_int, _c.POINTER(transcribe_backend_device)]
     lib.transcribe_get_model.restype = _c.c_void_p
     lib.transcribe_get_model.argtypes = [_c.c_void_p]
     lib.transcribe_get_segment.restype = _c.c_int
@@ -324,12 +336,12 @@ def configure(lib):
     lib.transcribe_model_arch_string.argtypes = [_c.c_void_p]
     lib.transcribe_model_backend.restype = _c.c_char_p
     lib.transcribe_model_backend.argtypes = [_c.c_void_p]
+    lib.transcribe_model_device.restype = _c.c_void_p
+    lib.transcribe_model_device.argtypes = [_c.c_void_p]
     lib.transcribe_model_free.restype = None
     lib.transcribe_model_free.argtypes = [_c.c_void_p]
     lib.transcribe_model_get_capabilities.restype = _c.c_int
     lib.transcribe_model_get_capabilities.argtypes = [_c.c_void_p, _c.POINTER(transcribe_capabilities)]
-    lib.transcribe_model_get_device.restype = _c.c_int
-    lib.transcribe_model_get_device.argtypes = [_c.c_void_p, _c.POINTER(transcribe_backend_device)]
     lib.transcribe_model_load_file.restype = _c.c_int
     lib.transcribe_model_load_file.argtypes = [_c.c_char_p, _c.POINTER(transcribe_model_load_params), _c.POINTER(_c.c_void_p)]
     lib.transcribe_model_load_params_init.restype = None
@@ -420,6 +432,8 @@ def configure(lib):
     lib.transcribe_stream_update_init.argtypes = [_c.POINTER(transcribe_stream_update)]
     lib.transcribe_timings_init.restype = None
     lib.transcribe_timings_init.argtypes = [_c.POINTER(transcribe_timings)]
+    lib.transcribe_titanet_diarize_ext_init.restype = None
+    lib.transcribe_titanet_diarize_ext_init.argtypes = [_c.POINTER(transcribe_titanet_diarize_ext)]
     lib.transcribe_token_init.restype = None
     lib.transcribe_token_init.argtypes = [_c.POINTER(transcribe_token)]
     lib.transcribe_tokenize.restype = _c.c_int

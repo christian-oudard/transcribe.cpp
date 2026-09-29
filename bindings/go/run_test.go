@@ -369,3 +369,30 @@ func TestSharedModel(t *testing.T) {
 		t.Errorf("sessions on one model disagreed:\n %q\n %q", texts[0], texts[1])
 	}
 }
+
+// TestLoadOnDevice asks for every device a model can be placed on by hand and
+// checks it landed there, which is what a caller pinning a device relies on.
+func TestLoadOnDevice(t *testing.T) {
+	path := modelPath(t, support.ModelEnv)
+	devs, err := Devices()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range devs {
+		if want.Type == DeviceAccel {
+			continue
+		}
+		m, err := LoadModel(path, &LoadOptions{Device: &want})
+		if err != nil {
+			t.Fatalf("%s: %v", want.Description, err)
+		}
+		got, err := m.Device()
+		m.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.h != want.h {
+			t.Errorf("asked for %s, landed on %s", want.Description, got.Description)
+		}
+	}
+}

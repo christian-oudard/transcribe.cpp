@@ -237,7 +237,7 @@ void test_shared_norm_stats() {
     const size_t       half = pcm.size() / 2;
     std::vector<float> piece;
     int                p_mels = 0, p_frames = 0;
-    CHECK(mf.compute(pcm.data() + half, half, piece, p_mels, p_frames, 0, &stats) == TRANSCRIBE_OK);
+    CHECK(mf.compute(pcm.data() + half, half, piece, p_mels, p_frames, 0, 0, &stats) == TRANSCRIBE_OK);
     CHECK(p_mels == n_mels);
 
     // Compare away from the edges, where the piece's own reflect padding

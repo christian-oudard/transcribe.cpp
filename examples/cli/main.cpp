@@ -13,6 +13,7 @@
 #include "wav.h"
 
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -23,6 +24,20 @@
 #include <vector>
 
 namespace {
+
+bool parse_device_index(const char * text, int & out) {
+    if (text == nullptr || text[0] == '\0') {
+        return false;
+    }
+    const char * end    = text + std::strlen(text);
+    int          parsed = 0;
+    const auto   result = std::from_chars(text, end, parsed);
+    if (result.ec != std::errc{} || result.ptr != end || parsed < 0) {
+        return false;
+    }
+    out = parsed;
+    return true;
+}
 
 // Minimal JSON string escape: covers the characters MUST be escaped by
 // the JSON spec (quote, backslash, control chars). Transcribed text is
@@ -137,6 +152,16 @@ std::string raw_text_json(const char * raw, const char * clean) {
     return out;
 }
 
+// A decode cut short before end-of-stream (budget or repetition stop): non-OK,
+// but the partial transcript is preserved (see docs/input-limits.md).
+bool is_cut_short(transcribe_status st) {
+    return st == TRANSCRIBE_ERR_OUTPUT_TRUNCATED || st == TRANSCRIBE_ERR_OUTPUT_REPETITION;
+}
+
+const char * cut_short_label(transcribe_status st) {
+    return st == TRANSCRIBE_ERR_OUTPUT_REPETITION ? "stopped repeating" : "truncated";
+}
+
 // ",\"speakers\":[...]" fragment: the "who spoke when" rows. Emitted only
 // when the run produced speaker segments. p is omitted unless finite
 // (NaN — "model provides no confidence" — is not representable in JSON).
@@ -206,13 +231,13 @@ struct cli_args {
     bool                       list_devices = false;  // --list-devices: print devices and exit
     bool                       batch_jsonl  = false;  // --batch-jsonl: output JSONL
     std::string                output_path;           // -o/--output: write raw text here
-    int                        repeat     = 1;
-    int                        n_threads  = 0;        // 0 = library default (all cores)
-    int                        n_ctx      = 0;        // 0 = model's true max; >0 lowers the cap
-    transcribe_kv_type         kv_type    = TRANSCRIBE_KV_TYPE_AUTO;
-    transcribe_backend_request backend    = TRANSCRIBE_BACKEND_AUTO;
-    int                        gpu_device = 0;  // --device N: 0 = auto, >0 = registry index
-    transcribe_timestamp_kind  timestamps = TRANSCRIBE_TIMESTAMPS_AUTO;
+    int                        repeat       = 1;
+    int                        n_threads    = 0;      // 0 = library default (all cores)
+    int                        n_ctx        = 0;      // 0 = model's true max; >0 lowers the cap
+    transcribe_kv_type         kv_type      = TRANSCRIBE_KV_TYPE_AUTO;
+    transcribe_backend_request backend      = TRANSCRIBE_BACKEND_AUTO;
+    int                        device_index = -1;  // --device N: -1 = auto, >=0 = exact registry device
+    transcribe_timestamp_kind  timestamps   = TRANSCRIBE_TIMESTAMPS_AUTO;
 
     // Whisper-family knobs. Ignored for non-Whisper models.
     std::string                              initial_prompt;                    // --initial-prompt TEXT
@@ -225,8 +250,10 @@ struct cli_args {
 
     // SenseVoice / FunASR-Nano family knobs. The `--itn` flag is shared:
     // it routes to whichever family the loaded model belongs to. Ignored
-    // by non-ITN-aware families.
-    bool use_itn           = false;  // --itn
+    // by non-ITN-aware families. Unset leaves the library default in place,
+    // which differs per family (sensevoice: on; funasr-nano: off), so the
+    // initializer here is only read once --itn / --no-itn has been seen.
+    bool use_itn           = false;  // --itn / --no-itn
     bool itn_set           = false;
     bool keep_special_tags = false;  // --raw-tokens
 
@@ -296,8 +323,8 @@ void print_usage(const char * argv0) {
                  "  --kv-type TYPE        flash-attn KV type: auto, f32, f16 (default: auto)\n"
                  "  --backend TYPE        compute backend: auto, cpu, cpu_accel, metal, vulkan, cuda, rocm\n"
                  "                        (default: auto)\n"
-                 "  --device N            GPU device index from --list-devices: 0 = auto\n"
-                 "                        (first of kind), >0 selects that registry index\n"
+                 "  --device N            exact device index from --list-devices, including 0\n"
+                 "                        (default: automatic device selection)\n"
                  "  --timestamps TYPE     timestamps: auto, none, segment, word, token (default: auto)\n"
                  "  --batch FILE          batch mode: FILE has one wav path per line\n"
                  "  --batch-jsonl         output one JSON line per file (for batch)\n"
@@ -307,7 +334,10 @@ void print_usage(const char * argv0) {
                  "  --temperature F       (whisper) tier-0 sampling temperature (default 0 = greedy)\n"
                  "  --condition-on-prev-tokens (whisper) carry prev-chunk tokens across chunks\n"
                  "  --prompt-condition T  (whisper) prompt placement: first|all (default: first)\n"
-                 "  --itn                 (sensevoice/funasr-nano) enable inverse text normalization\n"
+                 "  --itn                 (sensevoice/funasr-nano) enable inverse text\n"
+                 "                        normalization (sensevoice: on unless --no-itn)\n"
+                 "  --no-itn              (sensevoice/funasr-nano) emit the upstream\n"
+                 "                        spoken-form text instead\n"
                  "  --pnc                 (canary) emit punctuation and capitalization (default)\n"
                  "  --no-pnc              (canary) emit lowercase de-punctuated text\n"
                  "  --diarize             (moss/granite-plus) speaker attribution: segments carry\n"
@@ -361,16 +391,16 @@ int list_devices_main() {
                      "listing whatever registered\n",
                      (int) st);
     }
-    const int n = transcribe_backend_device_count();
+    const int n = transcribe_device_count();
     if (n <= 0) {
         std::fprintf(stderr, "no compute devices registered\n");
         return EXIT_FAILURE;
     }
     std::printf("%d compute device(s):\n", n);
     for (int i = 0; i < n; ++i) {
-        struct transcribe_backend_device d;
-        transcribe_backend_device_init(&d);
-        if (transcribe_get_backend_device(i, &d) != TRANSCRIBE_OK) {
+        struct transcribe_device_info d;
+        transcribe_device_info_init(&d);
+        if (transcribe_device_get_info(transcribe_device_get(i), &d) != TRANSCRIBE_OK) {
             continue;
         }
         const char * type_str = d.device_type == TRANSCRIBE_DEVICE_TYPE_CPU   ? "cpu" :
@@ -499,9 +529,8 @@ bool parse_args(int argc, char ** argv, cli_args & out) {
             if (!v) {
                 return false;
             }
-            out.gpu_device = std::atoi(v);
-            if (out.gpu_device < 0) {
-                std::fprintf(stderr, "error: --device must be >= 0 (0 = auto)\n");
+            if (!parse_device_index(v, out.device_index)) {
+                std::fprintf(stderr, "error: --device must be an integer index >= 0\n");
                 return false;
             }
         } else if (a == "--timestamps") {
@@ -583,6 +612,9 @@ bool parse_args(int argc, char ** argv, cli_args & out) {
             out.whisper_set = true;
         } else if (a == "--itn") {
             out.use_itn = true;
+            out.itn_set = true;
+        } else if (a == "--no-itn") {
+            out.use_itn = false;
             out.itn_set = true;
         } else if (a == "--pnc") {
             out.canary_pnc     = true;
@@ -806,8 +838,12 @@ int main(int argc, char ** argv) {
 
         struct transcribe_model_load_params mp;
         transcribe_model_load_params_init(&mp);
-        mp.backend                        = args.backend;
-        mp.gpu_device                     = args.gpu_device;
+        mp.backend = args.backend;
+        mp.device  = args.device_index >= 0 ? transcribe_device_get(args.device_index) : nullptr;
+        if (args.device_index >= 0 && mp.device == nullptr) {
+            std::fprintf(stderr, "error: --device index %d is not available\n", args.device_index);
+            return EXIT_FAILURE;
+        }
         struct transcribe_model * model   = nullptr;
         const transcribe_status   load_st = transcribe_model_load_file(args.model_path.c_str(), &mp, &model);
         if (load_st != TRANSCRIBE_OK) {
@@ -922,6 +958,7 @@ int main(int argc, char ** argv) {
 
         int n_ok        = 0;
         int n_truncated = 0;  // result-bearing: hit the generation cap, partial hyp emitted
+        int n_repeating = 0;  // result-bearing: stopped when the output looped, partial hyp emitted
         int n_fail      = 0;  // no usable result (wav load / backend / unsupported / whole-batch)
 
         // Offline batched path: group up to batch_size utterances into one
@@ -991,15 +1028,16 @@ int main(int argc, char ** argv) {
                 }
 
                 for (size_t k = 0; k < src_index.size(); ++k) {
-                    const std::string &     wav = wav_paths[src_index[k]];
-                    const transcribe_status ust = transcribe_batch_status(ctx, static_cast<int>(k));
-                    // OUTPUT_TRUNCATED is result-bearing: the partial transcript is
-                    // preserved and readable via transcribe_batch_full_text (see
-                    // transcribe.h). Emit it as the hyp so downstream tooling scores
-                    // the partial rather than an empty string; the error field below
-                    // still tags it so the truncation stays visible.
-                    const bool   result_present = ust == TRANSCRIBE_OK || ust == TRANSCRIBE_ERR_OUTPUT_TRUNCATED;
-                    const char * text           = "";
+                    const std::string &     wav            = wav_paths[src_index[k]];
+                    const transcribe_status ust            = transcribe_batch_status(ctx, static_cast<int>(k));
+                    // OUTPUT_TRUNCATED / OUTPUT_REPETITION are result-bearing: the
+                    // partial transcript is preserved and readable via
+                    // transcribe_batch_full_text (see transcribe.h). Emit it as the hyp
+                    // so downstream tooling scores the partial rather than an empty
+                    // string; the error field below still tags it so the stop stays
+                    // visible.
+                    const bool              result_present = ust == TRANSCRIBE_OK || is_cut_short(ust);
+                    const char *            text           = "";
                     if (result_present) {
                         const char * t = transcribe_batch_full_text(ctx, static_cast<int>(k));
                         if (t && *t) {
@@ -1010,6 +1048,8 @@ int main(int argc, char ** argv) {
                         ++n_ok;
                     } else if (ust == TRANSCRIBE_ERR_OUTPUT_TRUNCATED) {
                         ++n_truncated;
+                    } else if (ust == TRANSCRIBE_ERR_OUTPUT_REPETITION) {
+                        ++n_repeating;
                     } else {
                         ++n_fail;
                     }
@@ -1042,8 +1082,8 @@ int main(int argc, char ** argv) {
                         std::printf("[%zu/%zu] %s", src_index[k] + 1, total, wav.c_str());
                         if (ust == TRANSCRIBE_OK) {
                             std::printf("\n  text: %s\n", text);
-                        } else if (ust == TRANSCRIBE_ERR_OUTPUT_TRUNCATED) {
-                            std::printf("  (truncated)\n  text: %s\n", text);
+                        } else if (is_cut_short(ust)) {
+                            std::printf("  (%s)\n  text: %s\n", cut_short_label(ust), text);
                         } else {
                             std::printf("  ERROR: %s\n", transcribe_status_string(ust));
                         }
@@ -1130,12 +1170,12 @@ int main(int argc, char ** argv) {
                     run_st = transcribe_run(ctx, pcm.data(), static_cast<int>(pcm.size()), &rp);
                 }
 
-                // OUTPUT_TRUNCATED is result-bearing: the partial transcript is
-                // preserved and readable via transcribe_full_text (see transcribe.h).
-                // Emit it as the hyp so downstream tooling scores the partial rather
-                // than an empty string; the error field below still tags it so the
-                // truncation stays visible.
-                const bool   result_present = run_st == TRANSCRIBE_OK || run_st == TRANSCRIBE_ERR_OUTPUT_TRUNCATED;
+                // OUTPUT_TRUNCATED / OUTPUT_REPETITION are result-bearing: the partial
+                // transcript is preserved and readable via transcribe_full_text (see
+                // transcribe.h). Emit it as the hyp so downstream tooling scores the
+                // partial rather than an empty string; the error field below still
+                // tags it so the stop stays visible.
+                const bool   result_present = run_st == TRANSCRIBE_OK || is_cut_short(run_st);
                 const char * text           = "";
                 if (result_present) {
                     const char * t = transcribe_full_text(ctx);
@@ -1147,6 +1187,8 @@ int main(int argc, char ** argv) {
                     ++n_ok;
                 } else if (run_st == TRANSCRIBE_ERR_OUTPUT_TRUNCATED) {
                     ++n_truncated;
+                } else if (run_st == TRANSCRIBE_ERR_OUTPUT_REPETITION) {
+                    ++n_repeating;
                 } else {
                     ++n_fail;
                 }
@@ -1183,8 +1225,8 @@ int main(int argc, char ** argv) {
                     std::printf("[%zu/%zu] %s", i + 1, wav_paths.size(), wav.c_str());
                     if (run_st == TRANSCRIBE_OK) {
                         std::printf("\n  text: %s\n", text);
-                    } else if (run_st == TRANSCRIBE_ERR_OUTPUT_TRUNCATED) {
-                        std::printf("  (truncated)\n  text: %s\n", text);
+                    } else if (is_cut_short(run_st)) {
+                        std::printf("  (%s)\n  text: %s\n", cut_short_label(run_st), text);
                     } else {
                         std::printf("  ERROR: %s\n", transcribe_status_string(run_st));
                     }
@@ -1195,13 +1237,13 @@ int main(int argc, char ** argv) {
         }
 
         if (!args.batch_jsonl) {
-            std::fprintf(stderr, "batch: %d ok, %d truncated, %d failed out of %zu\n", n_ok, n_truncated, n_fail,
-                         wav_paths.size());
+            std::fprintf(stderr, "batch: %d ok, %d truncated, %d stopped repeating, %d failed out of %zu\n", n_ok,
+                         n_truncated, n_repeating, n_fail, wav_paths.size());
         }
 
         transcribe_session_free(ctx);
         transcribe_model_free(model);
-        // OUTPUT_TRUNCATED is result-bearing and does not fail the batch, but
+        // OUTPUT_TRUNCATED / OUTPUT_REPETITION are result-bearing and do not fail the batch, but
         // hard per-utterance failures must remain visible to automation.
         return n_fail > 0 || !output_ok ? EXIT_FAILURE : EXIT_SUCCESS;
     }
@@ -1223,8 +1265,12 @@ int main(int argc, char ** argv) {
     if (!args.model_path.empty()) {
         struct transcribe_model_load_params mp;
         transcribe_model_load_params_init(&mp);
-        mp.backend                      = args.backend;
-        mp.gpu_device                   = args.gpu_device;
+        mp.backend = args.backend;
+        mp.device  = args.device_index >= 0 ? transcribe_device_get(args.device_index) : nullptr;
+        if (args.device_index >= 0 && mp.device == nullptr) {
+            std::fprintf(stderr, "error: --device index %d is not available\n", args.device_index);
+            return EXIT_FAILURE;
+        }
         struct transcribe_model * model = nullptr;
         const transcribe_status   st    = transcribe_model_load_file(args.model_path.c_str(), &mp, &model);
         std::printf("model: %s -> %s\n", args.model_path.c_str(), transcribe_status_string(st));
@@ -1254,8 +1300,10 @@ int main(int argc, char ** argv) {
 
         // Surface the effective input-length limit so it's obvious how much
         // audio this session accepts (reflects --n-ctx). 0 means "no practical
-        // limit" — the family chunks internally or is unbounded. See
-        // docs/input-limits.md.
+        // limit", which covers two different families: one that chunks long
+        // audio internally (FEATURE_LONG_FORM) and one that is genuinely
+        // unbounded and encodes the clip in a single pass. Distinguish them
+        // rather than asserting the first. See docs/input-limits.md.
         {
             struct transcribe_session_limits lim;
             transcribe_session_limits_init(&lim);
@@ -1274,8 +1322,13 @@ int main(int argc, char ** argv) {
                         "  max audio:  ~0 s (context %d tok too small for "
                         "audio + prompt)\n",
                         lim.effective_n_ctx);
-                } else {
+                } else if (transcribe_model_supports(model, TRANSCRIBE_FEATURE_LONG_FORM)) {
                     std::printf("  max audio:  unbounded (long audio chunked internally)\n");
+                } else {
+                    // No context cap and no chunker: the family encodes the
+                    // whole clip in one pass (e.g. block-local attention,
+                    // where cost is linear in audio length).
+                    std::printf("  max audio:  unbounded (whole clip in one pass)\n");
                 }
             }
         }
@@ -1428,19 +1481,22 @@ int main(int argc, char ** argv) {
             }
         }
         std::printf("run: %s\n", transcribe_status_string(run_st));
-        // OUTPUT_TRUNCATED and ABORTED are non-OK but preserve the partial
-        // transcript (see docs/input-limits.md), so show the result for them
-        // too — just flagged.
-        const bool result_present =
-            run_st == TRANSCRIBE_OK || run_st == TRANSCRIBE_ERR_OUTPUT_TRUNCATED || run_st == TRANSCRIBE_ERR_ABORTED;
+        // OUTPUT_TRUNCATED, OUTPUT_REPETITION and ABORTED are non-OK but
+        // preserve the partial transcript (see docs/input-limits.md), so show
+        // the result for them too — just flagged.
+        const bool result_present = run_st == TRANSCRIBE_OK || is_cut_short(run_st) || run_st == TRANSCRIBE_ERR_ABORTED;
         if (result_present) {
             const char * text = transcribe_full_text(ctx);
             std::printf("text: %s\n", (text && *text) ? text : "(empty)");
             output_ok = write_output_file(output, args.output_path, text) && output_ok;
 
-            // A truncated decode hit the model's context/output budget before
-            // end-of-stream; the text above is incomplete.
-            if (transcribe_was_truncated(ctx)) {
+            // A decode cut short before end-of-stream; the text above is
+            // incomplete.
+            if (run_st == TRANSCRIBE_ERR_OUTPUT_REPETITION) {
+                std::printf(
+                    "  note:      decode stopped when the output began repeating "
+                    "itself (repeats dropped); transcript is incomplete\n");
+            } else if (transcribe_was_truncated(ctx)) {
                 std::printf(
                     "  note:      output truncated (hit the model's "
                     "context/generation cap before end-of-stream); "

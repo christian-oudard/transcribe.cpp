@@ -226,6 +226,22 @@ transcribe_apply_warnings(transcribe_diarize_regions_unit)
 add_test(NAME transcribe_diarize_regions_unit COMMAND transcribe_diarize_regions_unit)
 
 # -----------------------------------------------------------------------------
+# Tekken (Mistral / Voxtral) pretokenizer split (pure host, no model)
+# -----------------------------------------------------------------------------
+
+add_executable(transcribe_tekken_pretok_unit
+    tekken_pretok_unit.cpp)
+
+target_link_libraries(transcribe_tekken_pretok_unit PRIVATE transcribe)
+
+target_include_directories(transcribe_tekken_pretok_unit PRIVATE
+    ${CMAKE_SOURCE_DIR}/src)
+
+transcribe_apply_warnings(transcribe_tekken_pretok_unit)
+
+add_test(NAME transcribe_tekken_pretok_unit COMMAND transcribe_tekken_pretok_unit)
+
+# -----------------------------------------------------------------------------
 # Chunked-prefill causal mask geometry (pure host, no model)
 
 add_executable(transcribe_prefill_chunk_mask_unit
@@ -239,6 +255,34 @@ target_include_directories(transcribe_prefill_chunk_mask_unit PRIVATE
 transcribe_apply_warnings(transcribe_prefill_chunk_mask_unit)
 
 add_test(NAME transcribe_prefill_chunk_mask_unit COMMAND transcribe_prefill_chunk_mask_unit)
+
+# -----------------------------------------------------------------------------
+# Per-run decode budget rule (pure host, no model)
+
+add_executable(transcribe_decode_budget_unit
+    decode_budget_unit.cpp)
+
+target_include_directories(transcribe_decode_budget_unit PRIVATE
+    ${CMAKE_SOURCE_DIR}/src)
+
+transcribe_apply_warnings(transcribe_decode_budget_unit)
+
+add_test(NAME transcribe_decode_budget_unit COMMAND transcribe_decode_budget_unit)
+
+# -----------------------------------------------------------------------------
+# Greedy-decode repetition guard (pure host, no model)
+
+add_executable(transcribe_repetition_guard_unit
+    repetition_guard_unit.cpp)
+
+target_link_libraries(transcribe_repetition_guard_unit PRIVATE transcribe ggml)
+
+target_include_directories(transcribe_repetition_guard_unit PRIVATE
+    ${CMAKE_SOURCE_DIR}/src)
+
+transcribe_apply_warnings(transcribe_repetition_guard_unit)
+
+add_test(NAME transcribe_repetition_guard_unit COMMAND transcribe_repetition_guard_unit)
 
 # -----------------------------------------------------------------------------
 # MOSS diarized-transcript parser unit test (pure host, no model)
@@ -472,6 +516,7 @@ set(TRANSCRIBE_FIXTURE_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/tokenizer_minimal_streaming_cache_aware.gguf
     ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/tokenizer_minimal_streaming_buffered.gguf
     ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/arch_cohere_minimal.gguf
+    ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/arch_granite5_ctc_minimal.gguf
     ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/arch_qwen3_asr_minimal.gguf)
 
 find_program(TRANSCRIBE_UV uv)
@@ -694,6 +739,31 @@ if(TRANSCRIBE_UV)
 endif()
 
 # -----------------------------------------------------------------------------
+# Granite Speech 5.0 TurboCTC weight ingest smoke
+# -----------------------------------------------------------------------------
+
+if(TRANSCRIBE_UV)
+    add_executable(transcribe_granite5_ctc_smoke
+        granite5_ctc_smoke.cpp)
+
+    target_link_libraries(transcribe_granite5_ctc_smoke PRIVATE transcribe ggml)
+
+    target_include_directories(transcribe_granite5_ctc_smoke PRIVATE
+        ${CMAKE_SOURCE_DIR}/src)
+
+    target_compile_definitions(transcribe_granite5_ctc_smoke PRIVATE
+        "TRANSCRIBE_TEST_FIXTURES_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures\"")
+
+    transcribe_apply_warnings(transcribe_granite5_ctc_smoke)
+    add_dependencies(transcribe_granite5_ctc_smoke fixtures)
+
+    add_test(NAME transcribe_granite5_ctc_smoke
+        COMMAND transcribe_granite5_ctc_smoke)
+    set_tests_properties(transcribe_granite5_ctc_smoke PROPERTIES
+        SKIP_RETURN_CODE 77)
+endif()
+
+# -----------------------------------------------------------------------------
 # Real-model gated test (developer-local, never CI)
 # -----------------------------------------------------------------------------
 #
@@ -724,6 +794,55 @@ if(TRANSCRIBE_BUILD_REAL_MODEL_TESTS)
     set_tests_properties(transcribe_parakeet_real_smoke PROPERTIES
         SKIP_RETURN_CODE 77)
 
+    # Real-model granite5_ctc converter + loader gate.
+    add_executable(transcribe_granite5_ctc_real_smoke
+        granite5_ctc_real_smoke.cpp)
+
+    target_link_libraries(transcribe_granite5_ctc_real_smoke PRIVATE transcribe ggml)
+
+    target_include_directories(transcribe_granite5_ctc_real_smoke PRIVATE
+        ${CMAKE_SOURCE_DIR}/src)
+
+    transcribe_apply_warnings(transcribe_granite5_ctc_real_smoke)
+
+    add_test(NAME transcribe_granite5_ctc_real_smoke
+        COMMAND transcribe_granite5_ctc_real_smoke)
+    set_tests_properties(transcribe_granite5_ctc_real_smoke PROPERTIES
+        SKIP_RETURN_CODE 77)
+
+    # Public-ABI transcript and no-timestamps contract gate.
+    add_executable(transcribe_granite5_ctc_e2e_smoke
+        granite5_ctc_e2e_smoke.cpp)
+
+    target_link_libraries(transcribe_granite5_ctc_e2e_smoke
+        PRIVATE transcribe transcribe-common-example)
+
+    target_compile_definitions(transcribe_granite5_ctc_e2e_smoke PRIVATE
+        "TRANSCRIBE_TEST_SAMPLES_DIR=\"${CMAKE_SOURCE_DIR}/samples\"")
+
+    transcribe_apply_warnings(transcribe_granite5_ctc_e2e_smoke)
+
+    add_test(NAME transcribe_granite5_ctc_e2e_smoke
+        COMMAND transcribe_granite5_ctc_e2e_smoke)
+    set_tests_properties(transcribe_granite5_ctc_e2e_smoke PROPERTIES
+        SKIP_RETURN_CODE 77)
+
+    # Real-model GigaAM workspace-retention regression.
+    add_executable(transcribe_gigaam_workspace_release_smoke
+        gigaam_workspace_release_smoke.cpp)
+
+    target_link_libraries(transcribe_gigaam_workspace_release_smoke PRIVATE transcribe ggml)
+
+    target_include_directories(transcribe_gigaam_workspace_release_smoke PRIVATE
+        ${CMAKE_SOURCE_DIR}/src)
+
+    transcribe_apply_warnings(transcribe_gigaam_workspace_release_smoke)
+
+    add_test(NAME transcribe_gigaam_workspace_release_smoke
+        COMMAND transcribe_gigaam_workspace_release_smoke)
+    set_tests_properties(transcribe_gigaam_workspace_release_smoke PROPERTIES
+        SKIP_RETURN_CODE 77)
+
     # Multitalker bundle end-to-end smoke (diarize=ON on the composed
     # parakeet + sortformer bundle; both supervision modes). Gated on
     # TRANSCRIBE_MULTITALKER_BUNDLE_GGUF at runtime, exit 77 when unset.
@@ -741,6 +860,23 @@ if(TRANSCRIBE_BUILD_REAL_MODEL_TESTS)
     add_test(NAME transcribe_parakeet_multitalker_e2e_smoke
         COMMAND transcribe_parakeet_multitalker_e2e_smoke)
     set_tests_properties(transcribe_parakeet_multitalker_e2e_smoke PROPERTIES
+        SKIP_RETURN_CODE 77)
+
+    # Buffered-stream tail regression; skips when the unified model is absent.
+    add_executable(transcribe_parakeet_buffered_stream_eos_smoke
+        parakeet_buffered_stream_eos_smoke.cpp)
+
+    target_link_libraries(transcribe_parakeet_buffered_stream_eos_smoke
+        PRIVATE transcribe transcribe-common-example)
+
+    target_compile_definitions(transcribe_parakeet_buffered_stream_eos_smoke PRIVATE
+        "TRANSCRIBE_TEST_SAMPLES_DIR=\"${CMAKE_SOURCE_DIR}/samples\"")
+
+    transcribe_apply_warnings(transcribe_parakeet_buffered_stream_eos_smoke)
+
+    add_test(NAME transcribe_parakeet_buffered_stream_eos_smoke
+        COMMAND transcribe_parakeet_buffered_stream_eos_smoke)
+    set_tests_properties(transcribe_parakeet_buffered_stream_eos_smoke PROPERTIES
         SKIP_RETURN_CODE 77)
 endif()
 
@@ -777,6 +913,27 @@ if(TRANSCRIBE_BUILD_REAL_MODEL_TESTS)
     add_test(NAME transcribe_moonshine_streaming_stream_parity
         COMMAND transcribe_moonshine_streaming_stream_parity)
     set_tests_properties(transcribe_moonshine_streaming_stream_parity PROPERTIES
+        SKIP_RETURN_CODE 77)
+endif()
+
+# Streaming <-> offline interleave on one session (release_scratch after
+# offline runs must be transparent to a following stream and vice versa).
+# Runs for each streaming model env var that is set; RC 77 when none is.
+if(TRANSCRIBE_BUILD_REAL_MODEL_TESTS)
+    add_executable(transcribe_stream_offline_interleave_smoke
+        stream_offline_interleave_smoke.cpp)
+
+    target_link_libraries(transcribe_stream_offline_interleave_smoke
+        PRIVATE transcribe transcribe-common-example)
+
+    target_compile_definitions(transcribe_stream_offline_interleave_smoke PRIVATE
+        "TRANSCRIBE_TEST_SAMPLES_DIR=\"${CMAKE_SOURCE_DIR}/samples\"")
+
+    transcribe_apply_warnings(transcribe_stream_offline_interleave_smoke)
+
+    add_test(NAME transcribe_stream_offline_interleave_smoke
+        COMMAND transcribe_stream_offline_interleave_smoke)
+    set_tests_properties(transcribe_stream_offline_interleave_smoke PROPERTIES
         SKIP_RETURN_CODE 77)
 endif()
 
@@ -1059,6 +1216,22 @@ if(TRANSCRIBE_BUILD_REAL_MODEL_TESTS)
         COMMAND transcribe_whisper_tokenize_parity)
     set_tests_properties(transcribe_whisper_tokenize_parity PROPERTIES
         SKIP_RETURN_CODE 77)
+
+    # Voxtral: token ids match mistral-common's Tekkenizer (Tekken
+    # pretokenizer + converter-rebuilt merges). Gated by
+    # TRANSCRIBE_VOXTRAL_GGUF.
+    add_executable(transcribe_voxtral_tokenize_parity
+        voxtral_tokenize_parity.cpp)
+
+    target_link_libraries(transcribe_voxtral_tokenize_parity
+        PRIVATE transcribe)
+
+    transcribe_apply_warnings(transcribe_voxtral_tokenize_parity)
+
+    add_test(NAME transcribe_voxtral_tokenize_parity
+        COMMAND transcribe_voxtral_tokenize_parity)
+    set_tests_properties(transcribe_voxtral_tokenize_parity PROPERTIES
+        SKIP_RETURN_CODE 77)
 endif()
 
 # -----------------------------------------------------------------------------
@@ -1282,6 +1455,23 @@ add_test(NAME transcribe_tokenizer_decode_only_unit
     COMMAND transcribe_tokenizer_decode_only_unit)
 
 # -----------------------------------------------------------------------------
+# Whisper .bin synthesized suppression metadata
+# -----------------------------------------------------------------------------
+
+add_executable(transcribe_whisper_bin_suppress_unit
+    whisper_bin_suppress_unit.cpp)
+
+target_link_libraries(transcribe_whisper_bin_suppress_unit PRIVATE transcribe)
+
+target_include_directories(transcribe_whisper_bin_suppress_unit PRIVATE
+    ${CMAKE_SOURCE_DIR}/src)
+
+transcribe_apply_warnings(transcribe_whisper_bin_suppress_unit)
+
+add_test(NAME transcribe_whisper_bin_suppress_unit
+    COMMAND transcribe_whisper_bin_suppress_unit)
+
+# -----------------------------------------------------------------------------
 # Whisper .bin parser unit test
 # -----------------------------------------------------------------------------
 #
@@ -1360,4 +1550,10 @@ if(TRANSCRIBE_BUILD_EXAMPLES)
             -DWAV=${CMAKE_SOURCE_DIR}/samples/jfk.wav
             -DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/cli-output-smoke
             -P ${CMAKE_CURRENT_SOURCE_DIR}/cli_output_smoke.cmake)
+
+    add_test(NAME transcribe_cli_device_arg_smoke
+        COMMAND ${CMAKE_COMMAND}
+            -DCLI=$<TARGET_FILE:transcribe-cli>
+            -DWAV=${CMAKE_SOURCE_DIR}/samples/jfk.wav
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cli_device_arg_smoke.cmake)
 endif()

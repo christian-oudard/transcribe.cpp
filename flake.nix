@@ -14,7 +14,23 @@
       ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
       pkgsFor = system: nixpkgs.legacyPackages.${system};
-      version = "0.2.0";
+      # The header is where the library defines its version; see CMakeLists.txt.
+      version =
+        let
+          lines = builtins.filter builtins.isString (
+            builtins.split "\n" (builtins.readFile ./include/transcribe.h)
+          );
+          part =
+            name:
+            builtins.head (
+              builtins.head (
+                builtins.filter (m: m != null) (
+                  map (builtins.match "#define TRANSCRIBE_VERSION_${name} +([0-9]+)") lines
+                )
+              )
+            );
+        in
+        "${part "MAJOR"}.${part "MINOR"}.${part "PATCH"}";
     in
     {
       packages = forAllSystems (

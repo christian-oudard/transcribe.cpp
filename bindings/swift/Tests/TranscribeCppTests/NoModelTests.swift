@@ -38,6 +38,16 @@ final class NoModelTests: XCTestCase {
         XCTAssertFalse(Transcribe.statusString(3).isEmpty)  // ERR_FILE_NOT_FOUND
     }
 
+    func testTruncationStatusesShareOneCheck() {
+        // A handler for incomplete transcripts covers both cut-short statuses.
+        XCTAssertTrue(TranscribeError.outputTruncated(message: "", partial: nil).isTruncated)
+        XCTAssertTrue(TranscribeError.outputRepetition(message: "", partial: nil).isTruncated)
+        XCTAssertFalse(TranscribeError.aborted(message: "", partial: nil).isTruncated)
+        XCTAssertFalse(TranscribeError.inputTooLong("").isTruncated)
+        XCTAssertNil(TranscribeError.outputRepetition(message: "", partial: nil).partial)
+        XCTAssertNil(TranscribeError.inputTooLong("").partial)
+    }
+
     func testAtLeastOneDevice() {
         XCTAssertGreaterThanOrEqual(Transcribe.devices().count, 1)
     }
@@ -60,7 +70,7 @@ final class NoModelTests: XCTestCase {
     func testEnumeratedDevicesAreSelfConsistent() {
         let devices = Transcribe.devices()
         for (i, dev) in devices.enumerated() {
-            // `index` is the registry index — the value to pass as gpuDevice.
+            // `index` is the process-local registry position used for display.
             XCTAssertEqual(dev.index, i, "device \(i) index mismatch")
             // A CPU-kind device must classify on the CPU axis.
             if dev.kind == "cpu" {
@@ -90,12 +100,14 @@ final class NoModelTests: XCTestCase {
     // not shadow Swift's concurrency `Task`). Lock the public name + `task:`
     // option here so an accidental rename is caught without a model.
     func testTranscriptionTaskOptionRoundTrips() {
-        let translate = RunOptions(task: .translate, diarize: .on)
+        let translate = RunOptions(task: .translate, pnc: .off, itn: .on, diarize: .on)
         guard case .translate = translate.task else {
             return XCTFail("task option did not round-trip to .translate")
         }
         let task: TranscriptionTask = .transcribe
         guard case .transcribe = task else { return XCTFail("TranscriptionTask.transcribe") }
+        guard case .off = translate.pnc else { return XCTFail("Pnc.off") }
+        guard case .on = translate.itn else { return XCTFail("Itn.on") }
         guard case .on = translate.diarize else { return XCTFail("Diarize.on") }
     }
 

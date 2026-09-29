@@ -39,6 +39,8 @@ package transcribe
 
 #include <stdlib.h>
 #include <transcribe.h>
+
+static const char * compiled_version(void) { return TRANSCRIBE_VERSION; }
 */
 import "C"
 
@@ -50,9 +52,9 @@ import (
 	"unsafe"
 )
 
-// CompiledVersion is the library version this binding was written against.
-// Kept in step with include/transcribe.h by the version-sync CI gate.
-const CompiledVersion = "0.2.0"
+// CompiledVersion is the version of the header this binding was compiled
+// against.
+var CompiledVersion = C.GoString(C.compiled_version())
 
 // Version is the linked library's version string, e.g. "0.2.0".
 func Version() string { return C.GoString(C.transcribe_version()) }
@@ -195,34 +197,37 @@ type Device struct {
 	// MemoryFree is a snapshot taken when this struct was filled: it is
 	// stale as soon as anything allocates. Call Devices again to refresh.
 	MemoryFree uint64
+
+	// h is the library's handle, valid for the life of the process and
+	// meaningless outside it; ID is what to persist.
+	h C.transcribe_device_t
 }
 
 // DeviceCount is how many compute devices are registered.
-func DeviceCount() int { return int(C.transcribe_backend_device_count()) }
+func DeviceCount() int { return int(C.transcribe_device_count()) }
 
-// CompiledKernels is how many compute kernels the device at index has built
-// so far, or 0 for a backend that does not report it, today anything but
-// Vulkan.
+// CompiledKernels is how many compute kernels the device has built so far, or
+// 0 for a backend that does not report it, today anything but Vulkan.
 //
 // Backends that build kernels at runtime do it on first use, so this rises the
 // first time a graph needs a shape no earlier graph did, and settles once a
 // workload is warm. It is what separates a slow run from a cold one: run
 // throwaway work while the count moves, stop when it settles, and a rise
 // during real work says the warmup missed a shape. Asking compiles nothing.
-func CompiledKernels(index int) uint64 {
-	return uint64(C.transcribe_backend_device_compiled_kernels(C.int(index)))
+func (d Device) CompiledKernels() uint64 {
+	return uint64(C.transcribe_backend_device_compiled_kernels(d.h))
 }
 
-// CompiledKernelNames are the kernels the device at index has built, in
-// compile order, or nil for a backend that does not report names.
+// CompiledKernelNames are the kernels the device has built, in compile order,
+// or nil for a backend that does not report names.
 //
 // The count says a shape was new; these say what was new about it, since a
 // backend picks among variants of one operation by the dimensions it is given.
 // Read them either side of a run to see which variants that run pulled in.
-func CompiledKernelNames(index int) []string {
+func (d Device) CompiledKernelNames() []string {
 	var names []string
 	for i := uint64(0); ; i++ {
-		name := C.transcribe_backend_device_compiled_kernel_name(C.int(index), C.uint64_t(i))
+		name := C.transcribe_backend_device_compiled_kernel_name(d.h, C.uint64_t(i))
 		if name == nil {
 			return names
 		}
@@ -230,24 +235,15 @@ func CompiledKernelNames(index int) []string {
 	}
 }
 
-// getDevice returns the device at index, which is stable for the life of the
-// process, so the same index always names the same device.
-func getDevice(index int) (Device, error) {
-	var cd C.struct_transcribe_backend_device
-	C.transcribe_backend_device_init(&cd)
-	if err := check(C.transcribe_get_backend_device(C.int(index), &cd)); err != nil {
-		return Device{}, err
-	}
-	return goDevice(&cd), nil
-}
+// Refresh reads the device again, for a current MemoryFree.
+func (d Device) Refresh() (Device, error) { return deviceInfo(d.h) }
 
-// Devices lists every registered compute device. Its index is what
-// LoadOptions.GPUDevice selects by.
+// Devices lists every registered compute device, in the library's order.
 func Devices() ([]Device, error) {
 	n := DeviceCount()
 	out := make([]Device, 0, n)
 	for i := range n {
-		d, err := getDevice(i)
+		d, err := deviceInfo(C.transcribe_device_get(C.int(i)))
 		if err != nil {
 			return nil, err
 		}
@@ -256,10 +252,15 @@ func Devices() ([]Device, error) {
 	return out, nil
 }
 
-// goDevice copies a device struct out of library-owned storage. Every string
-// on it is a borrowed pointer valid for the life of the process, but copying
-// keeps the Go type free of unsafe.Pointer.
-func goDevice(cd *C.struct_transcribe_backend_device) Device {
+// deviceInfo copies what the library reports about h out of library-owned
+// storage. Every string on it is a borrowed pointer valid for the life of the
+// process, but copying keeps the Go type free of unsafe.Pointer.
+func deviceInfo(h C.transcribe_device_t) (Device, error) {
+	var cd C.struct_transcribe_device_info
+	C.transcribe_device_info_init(&cd)
+	if err := check(C.transcribe_device_get_info(h, &cd)); err != nil {
+		return Device{}, err
+	}
 	return Device{
 		Name:        C.GoString(cd.name),
 		Description: C.GoString(cd.description),
@@ -268,7 +269,8 @@ func goDevice(cd *C.struct_transcribe_backend_device) Device {
 		Type:        DeviceType(cd.device_type),
 		MemoryTotal: uint64(cd.memory_total),
 		MemoryFree:  uint64(cd.memory_free),
-	}
+		h:           h,
+	}, nil
 }
 
 // abiStruct is one public struct's layout as this binding sees it, paired
@@ -301,8 +303,8 @@ var abiStructs = []abiStruct{
 		unsafe.Sizeof(C.struct_transcribe_token{}), unsafe.Alignof(C.struct_transcribe_token{})},
 	{"session_limits", C.TRANSCRIBE_ABI_SESSION_LIMITS,
 		unsafe.Sizeof(C.struct_transcribe_session_limits{}), unsafe.Alignof(C.struct_transcribe_session_limits{})},
-	{"backend_device", C.TRANSCRIBE_ABI_BACKEND_DEVICE,
-		unsafe.Sizeof(C.struct_transcribe_backend_device{}), unsafe.Alignof(C.struct_transcribe_backend_device{})},
+	{"device_info", C.TRANSCRIBE_ABI_DEVICE_INFO,
+		unsafe.Sizeof(C.struct_transcribe_device_info{}), unsafe.Alignof(C.struct_transcribe_device_info{})},
 	{"speaker_segment", C.TRANSCRIBE_ABI_SPEAKER_SEGMENT,
 		unsafe.Sizeof(C.struct_transcribe_speaker_segment{}), unsafe.Alignof(C.struct_transcribe_speaker_segment{})},
 }

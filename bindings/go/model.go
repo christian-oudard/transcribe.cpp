@@ -29,11 +29,11 @@ type Model struct {
 // device.
 type LoadOptions struct {
 	Backend Backend
-	// GPUDevice picks a device by its index in Devices(). Zero means auto,
-	// which is why index 0 is not selectable explicitly: it is reachable
-	// only by being first in probe order. Non-zero against a CPU backend
-	// request, a non-GPU device, or an out-of-range index is ErrInvalidArg.
-	GPUDevice int
+	// Device is one from Devices(), or nil to let the backend choose, which
+	// under Auto tries every discrete GPU before any integrated one. A device
+	// the requested backend cannot use is ErrInvalidArg rather than a
+	// fallback.
+	Device *Device
 }
 
 // LoadModel reads a GGUF model from path. Pass nil opts for defaults.
@@ -59,7 +59,9 @@ func loadParams(opts *LoadOptions) C.struct_transcribe_model_load_params {
 	C.transcribe_model_load_params_init(&p)
 	if opts != nil {
 		p.backend = C.transcribe_backend_request(opts.Backend)
-		p.gpu_device = C.int(opts.GPUDevice)
+		if opts.Device != nil {
+			p.device = opts.Device.h
+		}
 	}
 	return p
 }
@@ -130,12 +132,7 @@ func (m *Model) Meta(key string) string {
 // the result is a fresh snapshot, so this is also how to ask how much room
 // is left on the device a model landed on.
 func (m *Model) Device() (Device, error) {
-	var cd C.struct_transcribe_backend_device
-	C.transcribe_backend_device_init(&cd)
-	if err := check(C.transcribe_model_get_device(m.c, &cd)); err != nil {
-		return Device{}, err
-	}
-	return goDevice(&cd), nil
+	return deviceInfo(C.transcribe_model_device(m.c))
 }
 
 // Feature is a behavioral toggle a model may or may not implement. These are
